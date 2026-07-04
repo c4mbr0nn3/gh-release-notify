@@ -80,6 +80,14 @@ docker compose up -d
 
 State persists across container restarts via the `./state` volume. On container recreation the state file survives, so you won't get a first-run notification burst for already-seen releases.
 
+**State directory permissions:** the container runs as non-root user `pangolin` (uid 10001). The mounted `./state` directory must be writable by that uid, or you'll see `Permission denied (os error 13)` on state save. Before first run:
+
+```bash
+mkdir -p ./state && sudo chown 10001:10001 ./state
+```
+
+(If you see `failed to write state tmp file ... Permission denied` in the logs, this is the fix.)
+
 ## First-run behavior
 
 For each repo, the first time the service sees it (no stored tag in `state.json`) it records the current latest tag **without** sending an email. Subsequent new releases trigger an email. Delete `state.json` to reset.
