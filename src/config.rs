@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 use std::env;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub poll_interval_seconds: u64,
     pub state_path: String,
@@ -12,7 +12,7 @@ pub struct Config {
     pub smtp: SmtpConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SmtpConfig {
     pub host: String,
     pub port: u16,
