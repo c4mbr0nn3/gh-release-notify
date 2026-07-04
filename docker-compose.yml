@@ -1,0 +1,13 @@
+services:
+  pangolin-notify:
+    image: pangolin-notify:latest
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./config.toml:/config/config.toml:ro
+      - ./state:/state
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - CONFIG_PATH=/config/config.toml
+      - RUST_LOG=info
