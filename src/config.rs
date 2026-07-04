@@ -230,4 +230,30 @@ password = "secret"
             assert_eq!(cfg.smtp.encryption, expected);
         }
     }
+
+    #[test]
+    fn rejects_bad_encryption_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = VALID.replace("encryption = \"starttls\"", "encryption = \"foo\"");
+        let p = write_config(dir.path(), &bad);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("encryption") || msg.contains("unknown variant") || msg.contains("foo"),
+            "expected error about encryption, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn rejects_port_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = VALID.replace("port = 587", "port = 0");
+        let p = write_config(dir.path(), &bad);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(
+            err.to_string().contains("port"),
+            "expected error about port, got: {}",
+            err
+        );
+    }
 }

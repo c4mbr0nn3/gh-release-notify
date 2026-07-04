@@ -1,6 +1,32 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, Result};
 use serde::Deserialize;
+use std::fmt;
 use tracing::warn;
+
+#[derive(Debug)]
+pub enum GithubError {
+    RateLimited { repo: String, body: String },
+    Other(anyhow::Error),
+}
+
+impl fmt::Display for GithubError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GithubError::RateLimited { repo, body } => {
+                write!(f, "github rate-limited (403) for {repo}: {body}")
+            }
+            GithubError::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for GithubError {}
+
+impl From<anyhow::Error> for GithubError {
+    fn from(e: anyhow::Error) -> Self {
+        GithubError::Other(e)
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Release {
@@ -26,13 +52,16 @@ impl GithubClient {
         Ok(GithubClient { client, token })
     }
 
-    pub async fn latest_stable_release(&self, repo: &str) -> Result<Option<Release>> {
+    pub async fn latest_stable_release(&self, repo: &str) -> Result<Option<Release>, GithubError> {
         let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
         let mut req = self.client.get(&url);
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
         }
-        let resp = req.send().await?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| GithubError::Other(anyhow!(e)))?;
         let status = resp.status();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
@@ -50,16 +79,22 @@ impl GithubClient {
         }
         if status == reqwest::StatusCode::FORBIDDEN {
             let body = resp.text().await.unwrap_or_default();
-            bail!("github rate-limited (403) for {repo}: {body}");
+            return Err(GithubError::RateLimited {
+                repo: repo.to_string(),
+                body,
+            });
         }
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            bail!(
+            return Err(GithubError::Other(anyhow!(
                 "github request for {repo} failed: status {status}, body: {}",
                 body.chars().take(200).collect::<String>()
-            );
+            )));
         }
-        let release: Release = resp.json().await?;
+        let release: Release = resp
+            .json()
+            .await
+            .map_err(|e| GithubError::Other(anyhow!(e)))?;
         Ok(Some(release))
     }
 }

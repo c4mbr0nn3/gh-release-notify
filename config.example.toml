@@ -1,8 +1,10 @@
 # How often to poll GitHub, in seconds. Minimum 60.
 poll_interval_seconds = 3600
 
-# Path to the state file (last-seen tags). Default: ./state.json
-state_path = "./state.json"
+# Path to the state file (last-seen tags).
+# For Docker/compose deployment use /state/state.json (the mounted volume).
+# For local runs use ./state.json.
+state_path = "/state/state.json"
 
 # Email "From" address for notifications.
 sender = "pangolin-notify@homelab.local"

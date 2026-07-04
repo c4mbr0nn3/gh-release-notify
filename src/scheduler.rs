@@ -4,7 +4,7 @@ use tokio::sync::watch;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
-use crate::github::GithubClient;
+use crate::github::{GithubClient, GithubError};
 use crate::notify::Mailer;
 use crate::state::StateStore;
 
@@ -18,6 +18,7 @@ pub async fn run(
     let interval = Duration::from_secs(cfg.poll_interval_seconds);
     loop {
         info!("polling {} repos", cfg.repos.len());
+        let mut rate_limited = false;
         for repo in &cfg.repos {
             match github.latest_stable_release(repo).await {
                 Ok(None) => info!("no release found for {repo}"),
@@ -50,8 +51,16 @@ pub async fn run(
                         }
                     }
                 }
+                Err(e) if matches!(e, GithubError::RateLimited { .. }) => {
+                    error!("github rate-limited, skipping remaining repos this tick: {e}");
+                    rate_limited = true;
+                    break;
+                }
                 Err(e) => warn!("failed to fetch latest release for {repo}: {e}"),
             }
+        }
+        if rate_limited {
+            error!("rate-limited by github, skipping remaining repos this tick");
         }
         info!("tick complete, sleeping {}s", cfg.poll_interval_seconds);
         tokio::select! {
