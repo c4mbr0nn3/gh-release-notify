@@ -31,6 +31,13 @@ docs/superpowers/plans/    # implementation plan
 .superpowers/sdd/          # SDD scratch (git-ignored): briefs, reports, ledger
 ```
 
+## Commit conventions
+
+- Follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>: <subject>`.
+- Types: `feat`, `fix`, `docs`, `chore`, `build`, `refactor`, `test`.
+- Subject line short and concise, **<= 72 chars**, imperative mood, no trailing period.
+- **No body allowed.** Subject only.
+
 ## Verification gate
 
 Run before claiming any task is done, before any commit:
