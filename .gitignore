@@ -1,6 +1,5 @@
 /target
 /state
 *.toml
-!Cargo.toml
 !config.example.toml
 .env

@@ -1,0 +1,23 @@
+# How often to poll GitHub, in seconds. Minimum 60.
+poll_interval_seconds = 3600
+
+# Path to the state file (last-seen tags). Default: ./state.json
+state_path = "./state.json"
+
+# Email "From" address for notifications.
+sender = "pangolin-notify@homelab.local"
+
+# Repos to watch, as "owner/repo".
+repos = ["fosrl/pangolin", "fosrl/newt"]
+
+# Recipient email addresses.
+recipients = ["you@example.com"]
+
+[smtp]
+host = "smtp.example.com"
+port = 587
+# TLS mode: "starttls" (port 587) | "tls" (implicit TLS, port 465) | "none" (plain, port 25)
+encryption = "starttls"
+username = "postmaster@example.com"
+# Prefer setting the password via SMTP_PASSWORD env var instead of here.
+password = "changeme"
