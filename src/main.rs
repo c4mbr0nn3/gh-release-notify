@@ -2,6 +2,7 @@
 
 mod config;
 mod github;
+mod notify;
 mod state;
 
 fn main() {
