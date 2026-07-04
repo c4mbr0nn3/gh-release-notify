@@ -9,6 +9,8 @@ services:
     mem_limit: 256m
     memswap_limit: 256m
     cpus: "0.50"
+    networks:
+      - pangolin-notify-net
     volumes:
       - ./config.toml:/config/config.toml:ro
       - ./state:/state
@@ -17,3 +19,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - CONFIG_PATH=/config/config.toml
       - RUST_LOG=info
+
+networks:
+  pangolin-notify-net:
+    name: pangolin-notify-net
