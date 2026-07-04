@@ -2,7 +2,13 @@ services:
   pangolin-notify:
     image: pangolin-notify:latest
     build: .
+    container_name: pangolin-notify
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: "0.50"
     volumes:
       - ./config.toml:/config/config.toml:ro
       - ./state:/state
