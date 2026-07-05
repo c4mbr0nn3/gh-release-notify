@@ -46,7 +46,7 @@ jobs:
           key: cargo-bin-cargo-release-1
 
       - name: Install cargo-release
-        run: cargo install cargo-release --version '^1' --locked --force
+        run: cargo install cargo-release --version '^1' --locked
 
       - name: Configure git
         run: |
@@ -56,23 +56,21 @@ jobs:
       - name: Run cargo-release
         id: cargo_release
         run: |
-          cargo release --config release.toml --execute ${{ inputs.level }}
+          cargo release --config release.toml --execute --no-confirm ${{ inputs.level }}
         # publish = false in release.toml disables crates.io publishing; no
         # extra flag is needed (and --no-similar-publish is not a real flag).
 
       - name: Extract version from pushed tag
+        if: steps.cargo_release.outcome == 'success'
         id: version
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          # GITHUB_REF on workflow_dispatch is the branch, not the tag cargo-release
-          # just pushed. cargo-release pushes the tag to origin; we fetch the
-          # latest tag matching v*.*.* on the current commit instead.
           git fetch --tags --force
           version_tag="$(git describe --tags --exact-match HEAD)"
           echo "tag=$version_tag" >> "$GITHUB_OUTPUT"
           echo "version=${version_tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: steps.cargo_release.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}

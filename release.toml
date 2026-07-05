@@ -5,6 +5,7 @@
 # duplicate these settings under [package.metadata.release] in Cargo.toml.
 
 allow-branch = ["main"]
+sign-commit = false
 sign-tag = false
 push-remote = "origin"
 consolidate-commits = true
