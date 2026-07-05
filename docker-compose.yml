@@ -1,6 +1,6 @@
 services:
   gh-release-notify:
-    image: gh-release-notify:latest
+    image: ghcr.io/c4mbr0nn3/gh-release-notify:latest
     build: .
     container_name: gh-release-notify
     restart: unless-stopped
