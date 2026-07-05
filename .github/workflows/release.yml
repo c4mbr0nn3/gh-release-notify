@@ -1,0 +1,79 @@
+# Manually-triggered release workflow.
+# Run from Actions UI: Actions → release → Run workflow → choose level.
+# Bumps Cargo.toml/Cargo.lock via cargo-release, commits, tags v{version},
+# pushes, then creates a GitHub Release with auto-generated notes.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "SemVer bump level"
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache cargo-install bin dir
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-cargo-release-1
+
+      - name: Install cargo-release
+        run: cargo install cargo-release --version '^1' --locked --force
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run cargo-release
+        id: cargo_release
+        run: |
+          cargo release --config release.toml --execute ${{ inputs.level }}
+        # publish = false in release.toml disables crates.io publishing; no
+        # extra flag is needed (and --no-similar-publish is not a real flag).
+
+      - name: Extract version from pushed tag
+        id: version
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          # GITHUB_REF on workflow_dispatch is the branch, not the tag cargo-release
+          # just pushed. cargo-release pushes the tag to origin; we fetch the
+          # latest tag matching v*.*.* on the current commit instead.
+          git fetch --tags --force
+          version_tag="$(git describe --tags --exact-match HEAD)"
+          echo "tag=$version_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${version_tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
