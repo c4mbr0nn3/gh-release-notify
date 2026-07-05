@@ -1,0 +1,17 @@
+# cargo-release config for gh-release-notify.
+# Invoked from .github/workflows/release.yml as:
+#   cargo release --config release.toml --execute <level>
+# This file is the single source of truth for release behavior; do NOT
+# duplicate these settings under [package.metadata.release] in Cargo.toml.
+
+allow-branch = ["main"]
+sign-tag = false
+push-remote = "origin"
+consolidate-commits = true
+pre-release-commit-message = "chore: release v{{version}}"
+tag = true
+tag-name = "v{{version}}"
+tag-message = "chore: release v{{version}}"
+push = true
+publish = false
+verify = true
