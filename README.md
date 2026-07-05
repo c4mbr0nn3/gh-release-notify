@@ -174,4 +174,4 @@ cargo build --release
 
 ## License
 
-Unreleased / personal homelab use.
+Licensed under the [MIT License](LICENSE).
