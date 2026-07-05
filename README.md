@@ -65,17 +65,22 @@ For a quick smoke test set `poll_interval_seconds = 120` in the config and watch
 
 ## Run in Docker / podman
 
-Build the image:
+Build the image (use `docker` if available, otherwise `podman`):
 
 ```bash
+docker build -t pangolin-notify:latest .
+# or, if docker is not available:
 podman build -t pangolin-notify:latest .
 ```
 
-Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence):
+Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence). Use whichever compose implementation you have available:
 
 ```bash
-docker compose up -d
-# or with podman: podman-compose up -d
+docker compose up -d        # docker compose plugin
+# or:
+podman compose up -d        # podman compose
+# or:
+docker-compose up -d        # standalone docker-compose
 ```
 
 State persists across container restarts via the `./state` volume. On container recreation the state file survives, so you won't get a first-run notification burst for already-seen releases.
