@@ -48,7 +48,7 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-For release/deploy checks also run `cargo build --release`. Container image build uses `podman build` (no `docker` on this system); `docker-compose.yml` is provided but not testable here (no docker compose).
+For release/deploy checks also run `cargo build --release`. Container tooling is **docker-first, podman-fallback**: when a container command is needed, check for `docker` first; if `docker` is not available on the system, fall back to `podman` (e.g. `podman build`). If neither `docker` nor `podman` is available, note container builds as not testable here. For compose, always probe for an available implementation first — check `docker compose` (plugin) and `podman compose` (or `docker-compose` standalone) and use whichever is present. `docker-compose.yml` is provided; if no compose implementation is available, note it as not testable here.
 
 ## Rules
 
