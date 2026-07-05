@@ -172,6 +172,53 @@ cargo build --release
 - Implementation plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
 - Project conventions: `AGENTS.md`
 
+## Releases
+
+Releases are cut manually from the GitHub Actions UI and are fully
+reproducible — no local tooling or tokens required.
+
+### Cutting a release
+
+1. Go to **Actions → release → Run workflow** in the GitHub repo.
+2. Choose the SemVer bump level (`patch`, `minor`, or `major`).
+3. The `release` workflow runs `cargo-release`, which bumps `Cargo.toml`
+   and `Cargo.lock`, commits as `chore: release v{version}`, tags
+   `v{version}`, and pushes to `main`.
+4. The workflow then creates a GitHub Release with auto-generated notes
+   derived from commits since the last tag.
+5. The tag push triggers the `ci` workflow, which runs the verification
+   gate (`cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`) and
+   then builds and pushes a multi-arch (amd64 + arm64) Docker image to
+   GHCR.
+
+### Image tags
+
+The image is published to `ghcr.io/c4mbr0nn3/gh-release-notify` with
+three tag flavors for each release `vX.Y.Z`:
+
+- `:vX.Y.Z` — git tag verbatim. Most explicit; use for pinning.
+- `:X.Y.Z` — SemVer without the `v` prefix. For tooling that strips `v`.
+- `:latest` — points at the most recent release. Updated only on tag
+  pushes, never on `main` branch pushes.
+
+### Pulling the image
+
+`docker-compose.yml` is configured to pull from GHCR by default:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To pin a specific release, edit `docker-compose.yml`:
+
+```yaml
+    image: ghcr.io/c4mbr0nn3/gh-release-notify:v0.1.0
+```
+
+For local development builds, use `docker compose up --build` (the
+`build: .` directive is retained as a fallback).
+
 ## License
 
 Licensed under the [MIT License](LICENSE).
