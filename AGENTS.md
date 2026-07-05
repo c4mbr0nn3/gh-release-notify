@@ -34,7 +34,7 @@ docs/superpowers/plans/    # implementation plan
 ## Commit conventions
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>: <subject>`.
-- Types: `feat`, `fix`, `docs`, `chore`, `build`, `refactor`, `test`.
+- Types: `feat`, `fix`, `docs`, `chore`, `build`, `ci`, `refactor`, `test`.
 - Subject line short and concise, **<= 72 chars**, imperative mood, no trailing period.
 - **No body allowed.** Subject only.
 
@@ -63,6 +63,36 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 - Config file: TOML, path via `--config` CLI arg or `CONFIG_PATH` env, default `./config.toml`.
 - Env overrides: `SMTP_PASSWORD` overrides `[smtp].password`; `GITHUB_TOKEN` (if set and non-empty) used for bearer auth; `RUST_LOG` controls tracing filter (default `info`).
 - For Docker/compose deployment `state_path` must be `/state/state.json` (the mounted volume), not `./state.json`.
+
+## Releases
+
+Releases are cut via two GitHub Actions workflows; `cargo-release` is
+invoked in CI, not locally.
+
+- `.github/workflows/release.yml` — `workflow_dispatch` with a
+  `patch|minor|major` input. Installs `cargo-release` 1.x, runs it
+  against `release.toml` (repo root), which bumps `Cargo.toml` +
+  `Cargo.lock`, commits as `chore: release v{version}`, tags
+  `v{version}`, pushes to `main`, then creates a GitHub Release with
+  auto-generated notes.
+- `.github/workflows/ci.yml` — triggered by `v*.*.*` tag pushes. Runs
+  the verification gate (fmt/clippy/test) in a `test` job, then builds
+  and pushes a multi-arch (amd64 + arm64) Docker image to
+  `ghcr.io/c4mbr0nn3/gh-release-notify` in an `image` job (needs
+  `test`).
+
+### Verification gate in CI
+
+`ci.yml` runs the full gate (`cargo fmt`, `cargo clippy -- -D warnings`,
+`cargo test`) on tag push. `release.yml` runs `cargo test` only (via
+`cargo-release`'s `verify = true`) as a pre-tag sanity check — the
+authoritative gate is `ci.yml`.
+
+### Release config
+
+`release.toml` at repo root is the single source of truth for
+`cargo-release` behavior. Do NOT duplicate these settings under
+`[package.metadata.release]` in `Cargo.toml`.
 
 ## Testing approach
 
