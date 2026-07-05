@@ -64,7 +64,7 @@ impl Mailer {
         recipients: &[String],
     ) -> Result<()> {
         let body = build_body(release, repo);
-        let subject = format!("[pangolin-notify] {} {} released", repo, release.tag_name);
+        let subject = format!("[gh-release-notify] {} {} released", repo, release.tag_name);
 
         let mut builder = Message::builder().from(
             self.sender

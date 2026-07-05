@@ -1,8 +1,8 @@
 services:
-  pangolin-notify:
-    image: pangolin-notify:latest
+  gh-release-notify:
+    image: gh-release-notify:latest
     build: .
-    container_name: pangolin-notify
+    container_name: gh-release-notify
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -10,7 +10,7 @@ services:
     memswap_limit: 256m
     cpus: "0.50"
     networks:
-      - pangolin-notify-net
+      - gh-release-notify-net
     volumes:
       - ./config.toml:/config/config.toml:ro
       - ./state:/state
@@ -21,5 +21,5 @@ services:
       - RUST_LOG=info
 
 networks:
-  pangolin-notify-net:
-    name: pangolin-notify-net
+  gh-release-notify-net:
+    name: gh-release-notify-net

@@ -47,7 +47,7 @@ impl GithubClient {
     pub fn new(token: Option<String>) -> Result<GithubClient> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .user_agent("pangolin-notify/0.1 (+https://github.com/fosrl)")
+            .user_agent("gh-release-notify/0.1 (+https://github.com/fosrl)")
             .build()?;
         Ok(GithubClient { client, token })
     }

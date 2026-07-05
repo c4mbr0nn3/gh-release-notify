@@ -1,4 +1,4 @@
-# pangolin-notify
+# gh-release-notify
 
 A long-running Rust daemon that polls a configurable list of GitHub repos for new **stable** releases and sends plain-text email notifications via SMTP when one appears. Built for homelab use; ships as a Docker/podman container.
 
@@ -23,7 +23,7 @@ cp config.example.toml config.toml
 ```toml
 poll_interval_seconds = 3600
 state_path = "/state/state.json"   # /state/state.json for Docker, ./state.json for local runs
-sender = "pangolin-notify@homelab.local"
+sender = "gh-release-notify@homelab.local"
 repos = ["fosrl/pangolin", "fosrl/newt"]
 recipients = ["you@example.com"]
 
@@ -42,7 +42,7 @@ password = "changeme"                # prefer SMTP_PASSWORD env var instead
 | `CONFIG_PATH`   | Path to the config file (also settable via `--config` CLI arg).  | `./config.toml`|
 | `GITHUB_TOKEN`  | Optional GitHub PAT. If set, sent as `Authorization: Bearer`.   | (unset)        |
 | `SMTP_PASSWORD` | Overrides `[smtp].password`. Keeps the secret out of the file.  | (unset)        |
-| `RUST_LOG`      | tracing filter directive (`info`, `debug`, `pangolin_notify=debug`). | `info`    |
+| `RUST_LOG`      | tracing filter directive (`info`, `debug`, `gh_release_notify=debug`). | `info`    |
 
 Copy `.env.example` to `.env` and fill in secrets:
 
@@ -68,9 +68,9 @@ For a quick smoke test set `poll_interval_seconds = 120` in the config and watch
 Build the image (use `docker` if available, otherwise `podman`):
 
 ```bash
-docker build -t pangolin-notify:latest .
+docker build -t gh-release-notify:latest .
 # or, if docker is not available:
-podman build -t pangolin-notify:latest .
+podman build -t gh-release-notify:latest .
 ```
 
 Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence). Use whichever compose implementation you have available:
@@ -85,7 +85,7 @@ docker-compose up -d        # standalone docker-compose
 
 State persists across container restarts via the `./state` volume. On container recreation the state file survives, so you won't get a first-run notification burst for already-seen releases.
 
-**State directory permissions:** the container runs as non-root user `pangolin` (uid 10001). The mounted `./state` directory must be writable by that uid, or you'll see `Permission denied (os error 13)` on state save. Before first run:
+**State directory permissions:** the container runs as non-root user `ghrel` (uid 10001). The mounted `./state` directory must be writable by that uid, or you'll see `Permission denied (os error 13)` on state save. Before first run:
 
 ```bash
 mkdir -p ./state && sudo chown 10001:10001 ./state
@@ -168,8 +168,8 @@ cargo build --release
 
 ## Design & plan
 
-- Spec: `docs/superpowers/specs/2026-07-04-pangolin-notify-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-07-04-pangolin-notify.md`
+- Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
+- Implementation plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
 - Project conventions: `AGENTS.md`
 
 ## License

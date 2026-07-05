@@ -1,4 +1,4 @@
-# pangolin-notify Implementation Plan
+# gh-release-notify Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -25,7 +25,7 @@
 ## File Structure
 
 ```
-pangolin-notify/
+gh-release-notify/
   Cargo.toml              # deps + metadata
   .gitignore              # target/, state/, *.toml (except config.example.toml), .env
   config.example.toml     # documented sample config
@@ -40,8 +40,8 @@ pangolin-notify/
     state.rs              # StateStore: load/save last-seen tags (JSON)
     notify.rs             # Mailer: build plain-text body, send via SMTP
     scheduler.rs          # poll loop: fetch -> compare -> notify -> persist
-  docs/superpowers/specs/2026-07-04-pangolin-notify-design.md   # already exists
-  docs/superpowers/plans/2026-07-04-pangolin-notify.md          # this file
+  docs/superpowers/specs/2026-07-04-gh-release-notify-design.md   # already exists
+  docs/superpowers/plans/2026-07-04-gh-release-notify.md          # this file
 ```
 
 ---
@@ -56,16 +56,16 @@ pangolin-notify/
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: a compiling binary that prints "pangolin-notify starting"; a git repo with an initial commit.
+- Produces: a compiling binary that prints "gh-release-notify starting"; a git repo with an initial commit.
 
 - [ ] **Step 1: Initialize the cargo project**
 
 Run:
 ```bash
 cd /home/j1mm0/Workspace/pangolin-notify
-cargo init --name pangolin-notify
+cargo init --name gh-release-notify
 ```
-Expected: `Created binary (application) pangolin-notify package`. This creates `Cargo.toml` and `src/main.rs`.
+Expected: `Created binary (application) gh-release-notify package`. This creates `Cargo.toml` and `src/main.rs`.
 
 - [ ] **Step 2: Write Cargo.toml with all dependencies**
 
@@ -73,7 +73,7 @@ Overwrite `Cargo.toml` with:
 
 ```toml
 [package]
-name = "pangolin-notify"
+name = "gh-release-notify"
 version = "0.1.0"
 edition = "2021"
 
@@ -101,7 +101,7 @@ Overwrite `src/main.rs` with:
 
 ```rust
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -406,7 +406,7 @@ Overwrite `src/main.rs`:
 mod config;
 
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -557,7 +557,7 @@ mod config;
 mod state;
 
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -622,7 +622,7 @@ impl GithubClient {
     pub fn new(token: Option<String>) -> Result<GithubClient> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .user_agent("pangolin-notify/0.1 (+https://github.com/fosrl)")
+            .user_agent("gh-release-notify/0.1 (+https://github.com/fosrl)")
             .build()?;
         Ok(GithubClient { client, token })
     }
@@ -708,7 +708,7 @@ mod github;
 mod state;
 
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -804,7 +804,7 @@ impl Mailer {
 
     pub async fn send_new_release(&self, release: &Release, repo: &str, recipients: &[String]) -> Result<()> {
         let body = build_body(release, repo);
-        let subject = format!("[pangolin-notify] {} {} released", repo, release.tag_name);
+        let subject = format!("[gh-release-notify] {} {} released", repo, release.tag_name);
 
         let mut builder = Message::builder()
             .from(self.sender.parse().map_err(|e| anyhow!("invalid sender '{}': {e}", self.sender))?);
@@ -866,7 +866,7 @@ mod notify;
 mod state;
 
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -980,7 +980,7 @@ mod scheduler;
 mod state;
 
 fn main() {
-    println!("pangolin-notify starting");
+    println!("gh-release-notify starting");
 }
 ```
 
@@ -1030,7 +1030,7 @@ use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
-#[command(name = "pangolin-notify", about = "Email notifier for new GitHub releases")]
+#[command(name = "gh-release-notify", about = "Email notifier for new GitHub releases")]
 struct Args {
     #[arg(long, env = "CONFIG_PATH", default_value = "./config.toml")]
     config: String,
@@ -1144,13 +1144,13 @@ Expected: all pass; release binary builds.
 
 Run in one terminal:
 ```bash
-./target/release/pangolin-notify --config /nonexistent
+./target/release/gh-release-notify --config /nonexistent
 ```
 Expected: logs "loading config from /nonexistent", then an "invalid config" error and exit code 1.
 
 Then create a throwaway `config.toml` (copy from `config.example.toml`, fill in placeholders) and run:
 ```bash
-./target/release/pangolin-notify --config ./config.toml
+./target/release/gh-release-notify --config ./config.toml
 ```
 Expected: startup logs, "polling N repos", and ticks begin. Press Ctrl-C; expected: "received SIGINT" then "shutdown complete" and clean exit.
 
@@ -1182,7 +1182,7 @@ poll_interval_seconds = 3600
 state_path = "./state.json"
 
 # Email "From" address for notifications.
-sender = "pangolin-notify@homelab.local"
+sender = "gh-release-notify@homelab.local"
 
 # Repos to watch, as "owner/repo".
 repos = ["fosrl/pangolin", "fosrl/newt"]
@@ -1279,12 +1279,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 pangolin
 
-COPY --from=builder /build/target/release/pangolin-notify /usr/local/bin/pangolin-notify
+COPY --from=builder /build/target/release/gh-release-notify /usr/local/bin/gh-release-notify
 
 USER pangolin
 WORKDIR /home/pangolin
 
-ENTRYPOINT ["pangolin-notify"]
+ENTRYPOINT ["gh-release-notify"]
 CMD ["--config", "/config/config.toml"]
 ```
 
@@ -1306,7 +1306,7 @@ config.toml
 
 Run:
 ```bash
-docker build -t pangolin-notify:latest .
+docker build -t gh-release-notify:latest .
 ```
 Expected: image builds successfully. (First build compiles all deps; expect several minutes.)
 
@@ -1314,11 +1314,11 @@ Expected: image builds successfully. (First build compiles all deps; expect seve
 
 Run:
 ```bash
-docker run --rm pangolin-notify:latest --version
+docker run --rm gh-release-notify:latest --version
 ```
 Expected: prints clap's version/help-ish output (or an error about missing config — either confirms the binary runs). If `--version` isn't wired (we didn't set `version` in `#[command]`), instead run:
 ```bash
-docker run --rm pangolin-notify:latest --config /nonexistent
+docker run --rm gh-release-notify:latest --config /nonexistent
 ```
 Expected: a startup log line followed by an "invalid config" error and exit code 1.
 
@@ -1342,8 +1342,8 @@ Create `docker-compose.yml`:
 
 ```yaml
 services:
-  pangolin-notify:
-    image: pangolin-notify:latest
+  gh-release-notify:
+    image: gh-release-notify:latest
     build: .
     restart: unless-stopped
     volumes:
@@ -1390,7 +1390,7 @@ Expected: all pass with no output from fmt-check, no clippy warnings, all tests 
 Run:
 ```bash
 cargo build --release
-docker build -t pangolin-notify:latest .
+docker build -t gh-release-notify:latest .
 docker compose config
 ```
 Expected: all succeed.

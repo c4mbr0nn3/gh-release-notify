@@ -10,7 +10,7 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "pangolin-notify",
+    name = "gh-release-notify",
     about = "Email notifier for new GitHub releases"
 )]
 struct Args {

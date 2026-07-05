@@ -7,7 +7,7 @@ poll_interval_seconds = 3600
 state_path = "/state/state.json"
 
 # Email "From" address for notifications.
-sender = "pangolin-notify@homelab.local"
+sender = "gh-release-notify@homelab.local"
 
 # Repos to watch, as "owner/repo".
 repos = ["fosrl/pangolin", "fosrl/newt"]

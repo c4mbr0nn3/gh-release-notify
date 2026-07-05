@@ -20,12 +20,12 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 pangolin
+    && useradd --create-home --uid 10001 ghrel
 
-COPY --from=builder /build/target/release/pangolin-notify /usr/local/bin/pangolin-notify
+COPY --from=builder /build/target/release/gh-release-notify /usr/local/bin/gh-release-notify
 
-USER pangolin
-WORKDIR /home/pangolin
+USER ghrel
+WORKDIR /home/ghrel
 
-ENTRYPOINT ["pangolin-notify"]
+ENTRYPOINT ["gh-release-notify"]
 CMD ["--config", "/config/config.toml"]

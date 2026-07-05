@@ -2,7 +2,7 @@
 
 ## Project
 
-pangolin-notify: a long-running Rust async daemon that polls a configurable list of GitHub repos for new stable releases and sends plain-text email notifications via SMTP. Deploys as a Docker/podman container for homelab use.
+gh-release-notify: a long-running Rust async daemon that polls a configurable list of GitHub repos for new stable releases and sends plain-text email notifications via SMTP. Deploys as a Docker/podman container for homelab use.
 
 ## Stack
 
@@ -73,7 +73,7 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 
 ## SDD artifacts
 
-- Spec: `docs/superpowers/specs/2026-07-04-pangolin-notify-design.md`
-- Plan: `docs/superpowers/plans/2026-07-04-pangolin-notify.md`
+- Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
+- Plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
 - Progress ledger: `.superpowers/sdd/progress.md` (git-ignored scratch; recover from `git log` if destroyed).
 - Per-task briefs and reports live under `.superpowers/sdd/`.

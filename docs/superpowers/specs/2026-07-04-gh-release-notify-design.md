@@ -1,4 +1,4 @@
-# pangolin-notify — Design Spec
+# gh-release-notify — Design Spec
 
 **Date:** 2026-07-04
 **Status:** Approved (brainstorming complete)
@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-**pangolin-notify** is a small long-running Rust daemon that periodically checks a configurable list of GitHub repositories for new **stable** releases and sends a plain-text email notification to a configurable list of recipients via SMTP when a new release is detected.
+**gh-release-notify** is a small long-running Rust daemon that periodically checks a configurable list of GitHub repositories for new **stable** releases and sends a plain-text email notification to a configurable list of recipients via SMTP when a new release is detected.
 
 The motivating use case is monitoring [fosrl/pangolin](https://github.com/fosrl/pangolin/releases) and [fosrl/newt](https://github.com/fosrl/newt/releases) from a homelab deployment. The project doubles as a deliberate learning vehicle for Rust (the author's first Rust project, coming from a .NET background).
 
@@ -56,7 +56,7 @@ src/
 
 **`state`** — A `StateStore` backed by a JSON file containing a `HashMap<String, String>` mapping `repo` → `last_seen_tag`. Methods: `load(path) -> Result<StateStore>` (returns empty state if the file is missing) and `save(&self) -> Result<()>` (atomic: write to `<path>.tmp` then rename). Logs warnings on read errors but starts fresh.
 
-**`notify`** — A `Mailer` wrapping lettre's `AsyncSmtpTransport`. Method `send_new_release(&self, release: &Release, repo: &str, recipients: &[String]) -> Result<()>`. Constructs a plain-text body containing: repo name, tag, published date, release URL, and the release notes body. Subject line: `[pangolin-notify] {repo} {tag} released`.
+**`notify`** — A `Mailer` wrapping lettre's `AsyncSmtpTransport`. Method `send_new_release(&self, release: &Release, repo: &str, recipients: &[String]) -> Result<()>`. Constructs a plain-text body containing: repo name, tag, published date, release URL, and the release notes body. Subject line: `[gh-release-notify] {repo} {tag} released`.
 
 **`scheduler`** — `run(config, github, state, mailer, shutdown)` loop. Each tick (every `poll_interval_seconds`): iterate over `config.repos`, fetch the latest release, compare its `tag_name` to the value stored in `state` for that repo, and on a mismatch send an email and update the stored tag. Per-repo errors are logged but do not abort the tick or affect other repos. On the first run for a repo with no stored tag, the current latest tag is stored **without** sending an email (avoids spamming on first deploy). The loop checks a shutdown signal between ticks.
 
@@ -88,7 +88,7 @@ poll_interval_seconds = 3600
 state_path = "./state.json"
 
 # Email "From" address for notifications.
-sender = "pangolin-notify@homelab.local"
+sender = "gh-release-notify@homelab.local"
 
 # Repos to watch, as "owner/repo".
 repos = ["fosrl/pangolin", "fosrl/newt"]
@@ -112,7 +112,7 @@ password = "smtp-password-here"
 | `CONFIG_PATH`   | Path to the config file.                                                 | `./config.toml`|
 | `GITHUB_TOKEN`  | Optional GitHub PAT. If set, sent as `Authorization: Bearer <token>`.   | (unset)        |
 | `SMTP_PASSWORD` | If set, overrides `[smtp].password`. Lets you keep the secret out of the config file. | (unset; falls back to `[smtp].password`) |
-| `RUST_LOG`      | tracing filter directive (e.g. `info`, `debug`, `pangolin_notify=debug`).| `info`         |
+| `RUST_LOG`      | tracing filter directive (e.g. `info`, `debug`, `gh_release_notify=debug`).| `info`         |
 
 ### Validation rules (fail fast at startup)
 
@@ -170,8 +170,8 @@ Multi-stage build:
 
 ```yaml
 services:
-  pangolin-notify:
-    image: pangolin-notify:latest
+  gh-release-notify:
+    image: gh-release-notify:latest
     build: .
     restart: unless-stopped
     volumes:
