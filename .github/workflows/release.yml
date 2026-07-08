@@ -102,9 +102,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/c4mbr0nn3/gh-release-notify
+          flavors: |
+            latest=false
           tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.version.outputs.tag }}
+            type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push
