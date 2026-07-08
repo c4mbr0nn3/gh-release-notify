@@ -66,27 +66,25 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 
 ## Releases
 
-Releases are cut via two GitHub Actions workflows; `cargo-release` is
-invoked in CI, not locally.
+Releases are cut via a single GitHub Actions workflow;
+`cargo-release` is invoked in CI, not locally.
 
 - `.github/workflows/release.yml` — `workflow_dispatch` with a
-  `patch|minor|major` input. Installs `cargo-release` 1.x, runs it
-  against `release.toml` (repo root), which bumps `Cargo.toml` +
-  `Cargo.lock`, commits as `chore: release v{version}`, tags
-  `v{version}`, pushes to `main`, then creates a GitHub Release with
-  auto-generated notes.
-- `.github/workflows/ci.yml` — triggered by `v*.*.*` tag pushes. Runs
-  the verification gate (fmt/clippy/test) in a `test` job, then builds
-  and pushes a multi-arch (amd64 + arm64) Docker image to
-  `ghcr.io/c4mbr0nn3/gh-release-notify` in an `image` job (needs
-  `test`).
+  `patch|minor|major` input. Runs the verification gate (fmt/clippy/test),
+  then installs `cargo-release` 1.x and runs it against `release.toml`
+  (repo root), which bumps `Cargo.toml` + `Cargo.lock`, commits as
+  `chore: release v{version}`, tags `v{version}`, pushes to `main`.
+  Then builds and pushes a multi-arch (amd64 + arm64) Docker image to
+  `ghcr.io/c4mbr0nn3/gh-release-notify`. Then creates a GitHub Release
+  with auto-generated notes.
 
 ### Verification gate in CI
 
-`ci.yml` runs the full gate (`cargo fmt`, `cargo clippy -- -D warnings`,
-`cargo test`) on tag push. `release.yml` runs `cargo test` only (via
-`cargo-release`'s `verify = true`) as a pre-tag sanity check — the
-authoritative gate is `ci.yml`.
+`release.yml` runs the full gate (`cargo fmt`, `cargo clippy -- -D
+warnings`, `cargo test`) before tagging. `cargo-release`'s `verify =
+true` in `release.toml` is a secondary pre-tag sanity check; the
+authoritative gate is the explicit fmt/clippy/test steps in
+`release.yml`.
 
 ### Release config
 

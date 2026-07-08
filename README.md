@@ -181,15 +181,15 @@ reproducible — no local tooling or tokens required.
 
 1. Go to **Actions → release → Run workflow** in the GitHub repo.
 2. Choose the SemVer bump level (`patch`, `minor`, or `major`).
-3. The `release` workflow runs `cargo-release`, which bumps `Cargo.toml`
-   and `Cargo.lock`, commits as `chore: release v{version}`, tags
+3. The `release` workflow runs the verification gate (`cargo fmt`,
+   `cargo clippy -- -D warnings`, `cargo test`).
+4. The workflow runs `cargo-release`, which bumps `Cargo.toml` and
+   `Cargo.lock`, commits as `chore: release v{version}`, tags
    `v{version}`, and pushes to `main`.
-4. The workflow then creates a GitHub Release with auto-generated notes
+5. The workflow builds and pushes a multi-arch (amd64 + arm64) Docker
+   image to GHCR.
+6. The workflow creates a GitHub Release with auto-generated notes
    derived from commits since the last tag.
-5. The tag push triggers the `ci` workflow, which runs the verification
-   gate (`cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`) and
-   then builds and pushes a multi-arch (amd64 + arm64) Docker image to
-   GHCR.
 
 ### Image tags
 
