@@ -1,5 +1,17 @@
 # How often to poll GitHub, in seconds. Minimum 60.
+# Used as fallback when cron_expression is not set.
 poll_interval_seconds = 3600
+
+# Optional: cron expression to control poll timing. If present, takes
+# precedence over poll_interval_seconds. Standard 5-field syntax:
+#   minute hour day-of-month month day-of-week
+# Examples:
+#   "0 */6 * * *"      every 6 hours
+#   "0 9 * * 1-5"      09:00 on weekdays
+#   "*/15 * * * *"     every 15 minutes
+# Timezone is UTC. Day-of-week: 1=Sunday .. 7=Saturday.
+# Shorthand: @hourly, @daily, @weekly, @monthly, @yearly
+# cron_expression = "0 */6 * * *"
 
 # Path to the state file (last-seen tags).
 # For Docker/compose deployment use /state/state.json (the mounted volume).
