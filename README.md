@@ -170,6 +170,8 @@ cargo build --release
 
 - Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
+- Release-workflow spec: `docs/superpowers/specs/2026-07-05-release-workflow-design.md`
+- Release-workflow plan: `docs/superpowers/plans/2026-07-05-release-workflow.md`
 - Project conventions: `AGENTS.md`
 
 ## Releases

@@ -103,5 +103,7 @@ authoritative gate is the explicit fmt/clippy/test steps in
 
 - Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
 - Plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
+- Release-workflow spec: `docs/superpowers/specs/2026-07-05-release-workflow-design.md`
+- Release-workflow plan: `docs/superpowers/plans/2026-07-05-release-workflow.md`
 - Progress ledger: `.superpowers/sdd/progress.md` (git-ignored scratch; recover from `git log` if destroyed).
 - Per-task briefs and reports live under `.superpowers/sdd/`.
