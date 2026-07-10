@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use cron::Schedule;
 use serde::Deserialize;
 use std::env;
 
@@ -10,6 +11,12 @@ pub struct Config {
     pub repos: Vec<String>,
     pub recipients: Vec<String>,
     pub smtp: SmtpConfig,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub cron_expression: Option<String>,
+    #[serde(skip)]
+    #[allow(dead_code)]
+    pub cron_schedule: Option<Schedule>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +137,15 @@ password = "secret"
         assert_eq!(cfg.smtp.encryption, Encryption::StartTls);
         assert_eq!(cfg.smtp.username, "postmaster");
         assert_eq!(cfg.smtp.password, "secret");
+    }
+
+    #[test]
+    fn parses_config_without_cron() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert!(cfg.cron_expression.is_none());
+        assert!(cfg.cron_schedule.is_none());
     }
 
     #[test]
