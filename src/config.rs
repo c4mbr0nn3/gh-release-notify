@@ -170,7 +170,7 @@ password = "secret"
     #[test]
     fn rejects_invalid_cron_expression() {
         let dir = tempfile::tempdir().unwrap();
-        let contents = with_cron(VALID, "cron_expression = \"not a cron\"");
+        let contents = with_cron(VALID, "cron_expression = \"99 99 * * *\"");
         let p = write_config(dir.path(), &contents);
         let err = Config::load(p.to_str().unwrap()).unwrap_err();
         assert!(err.to_string().contains("cron_expression"));
