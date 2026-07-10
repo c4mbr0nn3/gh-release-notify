@@ -3,6 +3,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 
+use chrono::Utc;
+
 use crate::config::Config;
 use crate::github::{GithubClient, GithubError};
 use crate::notify::Mailer;
@@ -62,12 +64,43 @@ pub async fn run(
         if rate_limited {
             error!("rate-limited by github, skipping remaining repos this tick");
         }
-        info!("tick complete, sleeping {}s", cfg.poll_interval_seconds);
-        tokio::select! {
-            _ = tokio::time::sleep(interval) => {}
-            _ = shutdown.changed() => {
-                info!("shutdown signaled, exiting scheduler");
-                break;
+        if let Some(schedule) = &cfg.cron_schedule {
+            let now = Utc::now();
+            match schedule.after(&now).next() {
+                Some(next_dt) => {
+                    let duration = (next_dt - now).to_std().unwrap_or_default();
+                    info!("tick complete, next poll at {next_dt}");
+                    tokio::select! {
+                        _ = tokio::time::sleep(duration) => {}
+                        _ = shutdown.changed() => {
+                            info!("shutdown signaled, exiting scheduler");
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    error!(
+                        "cron schedule has no future occurrences, \
+                         falling back to poll_interval_seconds"
+                    );
+                    info!("tick complete, sleeping {}s", cfg.poll_interval_seconds);
+                    tokio::select! {
+                        _ = tokio::time::sleep(interval) => {}
+                        _ = shutdown.changed() => {
+                            info!("shutdown signaled, exiting scheduler");
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            info!("tick complete, sleeping {}s", cfg.poll_interval_seconds);
+            tokio::select! {
+                _ = tokio::time::sleep(interval) => {}
+                _ = shutdown.changed() => {
+                    info!("shutdown signaled, exiting scheduler");
+                    break;
+                }
             }
         }
     }
