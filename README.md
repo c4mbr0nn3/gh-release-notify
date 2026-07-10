@@ -4,7 +4,7 @@ A long-running Rust daemon that polls a configurable list of GitHub repos for ne
 
 ## What it does
 
-- Polls `GET /repos/{owner}/{repo}/releases/latest` for each configured repo at a configurable interval (default 1h).
+- Polls `GET /repos/{owner}/{repo}/releases/latest` for each configured repo on a configurable schedule: a fixed interval (default 1h) or an optional cron expression for precise timing control.
 - Compares the latest stable tag to the last-seen tag stored in a JSON state file.
 - On a new release, sends a plain-text email (repo, tag, name, published date, URL, release notes) to a configurable recipient list via SMTP.
 - On first run for a repo with no stored tag, records the current latest tag **without** emailing (so deploying the service doesn't spam you about the current release).
@@ -26,6 +26,11 @@ state_path = "/state/state.json"   # /state/state.json for Docker, ./state.json 
 sender = "gh-release-notify@homelab.local"
 repos = ["fosrl/pangolin", "fosrl/newt"]
 recipients = ["you@example.com"]
+
+# Optional: cron expression (takes precedence over poll_interval_seconds).
+# Standard 5-field: minute hour day-of-month month day-of-week.
+# Timezone is UTC. Day-of-week: 1=Sunday .. 7=Saturday.
+# cron_expression = "0 */6 * * *"
 
 [smtp]
 host = "smtp.example.com"
