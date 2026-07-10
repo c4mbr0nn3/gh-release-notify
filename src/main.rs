@@ -37,17 +37,31 @@ async fn main() {
         }
     };
 
-    info!(
-        "config loaded: {} repos, poll interval {}s, state path {}, token {}",
-        cfg.repos.len(),
-        cfg.poll_interval_seconds,
-        cfg.state_path,
-        if cfg.github_token().is_some() {
-            "present"
-        } else {
-            "absent"
-        }
-    );
+    if cfg.cron_schedule.is_some() {
+        info!(
+            "config loaded: {} repos, cron schedule '{}', state path {}, token {}",
+            cfg.repos.len(),
+            cfg.cron_expression.as_deref().unwrap_or(""),
+            cfg.state_path,
+            if cfg.github_token().is_some() {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+    } else {
+        info!(
+            "config loaded: {} repos, poll interval {}s, state path {}, token {}",
+            cfg.repos.len(),
+            cfg.poll_interval_seconds,
+            cfg.state_path,
+            if cfg.github_token().is_some() {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+    }
 
     let github = match github::GithubClient::new(cfg.github_token()) {
         Ok(c) => c,
