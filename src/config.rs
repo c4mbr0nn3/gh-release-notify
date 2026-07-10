@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Result};
 use cron::Schedule;
 use serde::Deserialize;
 use std::env;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -12,10 +13,8 @@ pub struct Config {
     pub recipients: Vec<String>,
     pub smtp: SmtpConfig,
     #[serde(default)]
-    #[allow(dead_code)]
     pub cron_expression: Option<String>,
     #[serde(skip)]
-    #[allow(dead_code)]
     pub cron_schedule: Option<Schedule>,
 }
 
@@ -91,6 +90,21 @@ impl Config {
         if !self.smtp.username.is_empty() && self.smtp_password().is_empty() {
             bail!("smtp.username is set but no password provided (set [smtp].password or SMTP_PASSWORD env)");
         }
+        if let Some(expr) = &self.cron_expression {
+            let normalized = if expr.starts_with('@') {
+                expr.clone()
+            } else {
+                let field_count = expr.split_whitespace().count();
+                match field_count {
+                    5 => format!("0 {expr}"),
+                    6 => expr.clone(),
+                    n => bail!("cron_expression must have 5 or 6 fields, got {n}"),
+                }
+            };
+            let schedule = Schedule::from_str(&normalized)
+                .map_err(|e| anyhow!("invalid cron_expression '{expr}': {e}"))?;
+            self.cron_schedule = Some(schedule);
+        }
         Ok(())
     }
 }
@@ -137,6 +151,65 @@ password = "secret"
         assert_eq!(cfg.smtp.encryption, Encryption::StartTls);
         assert_eq!(cfg.smtp.username, "postmaster");
         assert_eq!(cfg.smtp.password, "secret");
+    }
+
+    fn with_cron(base: &str, cron_line: &str) -> String {
+        base.replace("[smtp]", &format!("{cron_line}\n[smtp]"))
+    }
+
+    #[test]
+    fn parses_valid_config_with_cron() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"0 */6 * * *\"");
+        let p = write_config(dir.path(), &contents);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.cron_expression.as_deref(), Some("0 */6 * * *"));
+        assert!(cfg.cron_schedule.is_some());
+    }
+
+    #[test]
+    fn rejects_invalid_cron_expression() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"not a cron\"");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("cron_expression"));
+    }
+
+    #[test]
+    fn rejects_cron_wrong_field_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"0 9 *\"");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("5 or 6 fields"));
+    }
+
+    #[test]
+    fn auto_prepends_seconds_for_5_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"0 */6 * * *\"");
+        let p = write_config(dir.path(), &contents);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert!(cfg.cron_schedule.is_some());
+    }
+
+    #[test]
+    fn accepts_6_field_cron() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"0 0 */6 * * *\"");
+        let p = write_config(dir.path(), &contents);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert!(cfg.cron_schedule.is_some());
+    }
+
+    #[test]
+    fn accepts_cron_shorthand() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = with_cron(VALID, "cron_expression = \"@daily\"");
+        let p = write_config(dir.path(), &contents);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert!(cfg.cron_schedule.is_some());
     }
 
     #[test]
