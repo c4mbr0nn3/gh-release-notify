@@ -1,48 +1,39 @@
-# Manually-triggered release workflow (atomic).
-# Run from Actions UI: Actions → release → Run workflow → choose level.
-# Verifies (fmt/clippy/test), bumps Cargo.toml/Cargo.lock via cargo-release,
-# commits, tags v{version}, pushes, then builds and pushes a multi-arch
-# (amd64 + arm64) Docker image to GHCR, then creates a GitHub Release.
+# Tag-triggered release pipeline (atomic).
+# A release starts locally: scripts/release.sh + cargo-release land the tag.
+# Pushing the tag to main runs this workflow: gate, vuln scans, multi-arch
+# image build/push to GHCR, SARIF upload, git-cliff release body, GitHub Release.
 name: release
 
 on:
-  workflow_dispatch:
-    inputs:
-      level:
-        description: "SemVer bump level"
-        required: true
-        type: choice
-        default: patch
-        options:
-          - patch
-          - minor
-          - major
-
-permissions:
-  contents: write
-  packages: write
-
-concurrency:
-  group: release
-  cancel-in-progress: false
+  push:
+    tags:
+      - "v*"
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release on the tag
+      packages: write # push image to GHCR
+      security-events: write # upload SARIF from trivy scans
+      attestations: write # provenance/sbom attestations
+      id-token: write # required for attestations
     steps:
-      - name: Checkout (full history)
-        uses: actions/checkout@v4
+      # 1. Checkout + pinned toolchain (must match Dockerfile rust:1.98.1-slim)
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # full history: git-cliff changelog needs all tags
 
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Rust toolchain 1.98.1
+        uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
 
+      # 2. Verification gate
       - name: cargo fmt
         run: cargo fmt --check
 
@@ -52,78 +43,102 @@ jobs:
       - name: cargo test
         run: cargo test
 
-      - name: Cache cargo-install bin dir
-        uses: actions/cache@v4
+      # 3. Early vuln gate (pre-build, blocking): Cargo.lock advisories +
+      #    Dockerfile misconfig checks.
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.36.0
         with:
-          path: ~/.cargo/bin
-          key: cargo-bin-cargo-release-1
+          scan-type: fs
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-fs.sarif
 
-      - name: Install cargo-release
-        run: cargo install cargo-release --version '^1' --locked
-
-      - name: Configure git
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Run cargo-release
-        id: cargo_release
-        run: |
-          cargo release --config release.toml --execute --no-confirm ${{ inputs.level }}
-
-      - name: Extract version from pushed tag
-        if: steps.cargo_release.outcome == 'success'
+      # 4. Build + push multi-arch image with attestations and OCI annotations
+      - name: Extract version from tag
         id: version
         run: |
-          git fetch --tags --force
-          version_tag="$(git describe --tags --exact-match HEAD)"
-          echo "tag=$version_tag" >> "$GITHUB_OUTPUT"
-          echo "version=${version_tag#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        if: steps.cargo_release.outcome == 'success'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        if: steps.cargo_release.outcome == 'success'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        if: steps.cargo_release.outcome == 'success'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Image metadata
-        if: steps.cargo_release.outcome == 'success'
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/c4mbr0nn3/gh-release-notify
-          flavors: |
-            latest=false
+          annotations: |
+            org.opencontainers.image.title=gh-release-notify
+            org.opencontainers.image.description=GitHub release notification daemon
+            org.opencontainers.image.source=https://github.com/c4mbr0nn3/gh-release-notify
           tags: |
             type=raw,value=${{ steps.version.outputs.tag }}
             type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push
-        if: steps.cargo_release.outcome == 'success'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: true
+          sbom: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 5. Late vuln gate (post-push, blocking): only findings with an
+      #    available fix.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ghcr.io/c4mbr0nn3/gh-release-notify:${{ steps.version.outputs.tag }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-image.sarif
+
+      # 6. SARIF uploads to the Security tab
+      - name: Upload filesystem scan SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Upload image scan SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      # 7. git-cliff, exact-pinned (MSRV 1.88 < toolchain 1.98.1)
+      - name: Install git-cliff
+        run: cargo install git-cliff --locked --version 2.14.1
+
+      # 8. Render release body from cliff.toml
+      - name: Generate changelog
+        run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" > release-body.md
+
+      # 9. Create GitHub Release with the git-cliff body
       - name: Create GitHub Release
-        if: steps.cargo_release.outcome == 'success'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-body.md
