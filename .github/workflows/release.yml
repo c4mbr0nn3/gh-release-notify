@@ -46,7 +46,7 @@ jobs:
       # 3. Early vuln gate (pre-build, blocking): Cargo.lock advisories +
       #    Dockerfile misconfig checks.
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,misconfig
@@ -123,7 +123,7 @@ jobs:
       # 6. Late vuln gate (post-push, blocking): only findings with an
       #    available fix. Scans the locally-built amd64 image.
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/c4mbr0nn3/gh-release-notify:${{ steps.version.outputs.tag }}
           ignore-unfixed: true
