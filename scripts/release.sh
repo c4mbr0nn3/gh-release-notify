@@ -99,7 +99,7 @@ dry_run() {
     git cliff --unreleased --bump ${BUMP_LEVEL:+"${BUMP_LEVEL}"} 2>/dev/null
     echo "dry-run: planned actions:"
     echo "  1. run gate: cargo fmt --check, cargo clippy -- -D warnings, cargo test"
-    echo "  2. cargo release --config release.toml --execute --no-confirm${BUMP_LEVEL:+ --bump ${BUMP_LEVEL}}"
+    echo "  2. cargo release --config release.toml --execute --no-confirm ${NEXT_VERSION#v}"
     echo "     -> bumps Cargo.toml + Cargo.lock, generates changelog via pre-release hook"
     echo "     -> commits 'chore: release ${NEXT_VERSION}', tags ${NEXT_VERSION}, pushes main + tag"
     echo "dry-run complete; nothing was written"
@@ -111,7 +111,7 @@ execute_release() {
     cargo clippy -- -D warnings
     cargo test
     echo "executing release..."
-    cargo release --config release.toml --execute --no-confirm ${BUMP_LEVEL:+--bump "${BUMP_LEVEL}"}
+    cargo release --config release.toml --execute --no-confirm "${NEXT_VERSION#v}"
     echo "release ${NEXT_VERSION} pushed"
     echo "on any failure after the push: fix forward on a new patch; do not delete tags or revert"
 }

@@ -68,7 +68,7 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 ## Releases
 
 Releases are cut locally via `./scripts/release.sh` (flags: `--dry-run`,
-`--major`, `--minor`, `--patch`); a tag push to `main` then triggers a
+`--major`, `--minor`, `--patch`); a tag push then triggers a
 tag-driven GitHub Actions workflow that builds and publishes the image and
 the GitHub Release. No `workflow_dispatch` trigger exists.
 
