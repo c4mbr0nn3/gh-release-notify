@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.1.0] - 2026-09-12
+### Bug Fixes
+
+- Test invalid cron expression via parser error path
+
+- Order release script safety rails per spec
+
+- Upload trivy SARIF even when scan blocks
+
+- Scan locally-built amd64 image in release workflow
+
+- Pass explicit version to cargo-release in release script
+
+- Drop duplicate image push from release workflow
+
+- Serialize env-mutating config tests
+
+### Build
+
+- Add cron 0.17 dependency
+
+- Bump reqwest to 0.13 and toml to 1
+
+- Add cliff.toml and seed changelog
+
+- Pin Dockerfile builder toolchain to 1.98.1
+
+- Rework release.toml for local release flow
+
+### Continuous Integration
+
+- Rework release workflow to tag trigger
+
+### Documentation
+
+- Reference release-workflow spec and plan in AGENTS.md and README
+
+- Design spec for cron schedule support
+
+- Implementation plan for cron schedule support
+
+- Document cron_expression in config example
+
+- Document cron_expression in README
+
+- Document cron_expression in AGENTS.md
+
+- Add local release workflow spec and plan
+
+- Document local release workflow
+
+### Features
+
+- Add cron_expression and cron_schedule config fields
+
+- Validate and parse cron_expression in config
+
+- Add cron scheduling branch to scheduler
+
+- Log cron schedule or poll interval at startup
+
+- Add local release script
+
+### Miscellaneous Tasks
+
+- Update deps
+
+- Remove opencode config
+
+- Bump semver-compatible dependency lockfile updates
+
+
 ## [Unreleased]
 ### Bug Fixes
 
