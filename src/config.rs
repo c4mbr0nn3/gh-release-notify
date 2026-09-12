@@ -113,6 +113,9 @@ impl Config {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn write_config(dir: &std::path::Path, contents: &str) -> std::path::PathBuf {
         let p = dir.join("config.toml");
@@ -268,6 +271,7 @@ password = "secret"
 
     #[test]
     fn rejects_username_without_password() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("password = \"secret\"", "password = \"\"");
         let p = write_config(dir.path(), &bad);
@@ -278,6 +282,7 @@ password = "secret"
 
     #[test]
     fn smtp_password_env_overrides_config() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
@@ -288,6 +293,7 @@ password = "secret"
 
     #[test]
     fn github_token_returns_none_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         env::remove_var("GITHUB_TOKEN");
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
@@ -297,6 +303,7 @@ password = "secret"
 
     #[test]
     fn github_token_returns_some_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
