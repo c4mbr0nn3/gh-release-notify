@@ -21,7 +21,7 @@ RUN touch src/main.rs && cargo build --release
 # Trivy --ignore-unfixed in CI is the gate for what floats in.
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     libssl3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 ghrel
