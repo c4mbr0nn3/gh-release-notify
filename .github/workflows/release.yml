@@ -115,14 +115,24 @@ jobs:
           format: sarif
           output: trivy-image.sarif
 
-      # 6. SARIF uploads to the Security tab
+      # 6. SARIF uploads to the Security tab. Uploads run even when a scan
+      #    blocked the job, but only if trivy actually produced the SARIF file.
+      - name: Check SARIF files exist
+        if: always()
+        id: sarif
+        run: |
+          echo "fs=$([ -f trivy-fs.sarif ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "image=$([ -f trivy-image.sarif ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Upload filesystem scan SARIF
+        if: always() && steps.sarif.outputs.fs == 'true'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
 
       - name: Upload image scan SARIF
+        if: always() && steps.sarif.outputs.image == 'true'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
