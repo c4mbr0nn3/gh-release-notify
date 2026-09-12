@@ -71,10 +71,10 @@ refuse() {
 }
 
 check_state() {
-    [[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] \
-        || refuse "HEAD is not on main (release must run from main)"
     [[ -z "$(git status --porcelain)" ]] \
         || refuse "worktree is dirty; commit or stash local changes"
+    [[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] \
+        || refuse "HEAD is not on main (release must run from main)"
     [[ "$(git rev-list --count "@{upstream}"..HEAD 2>/dev/null || echo 1)" -eq 0 ]] \
         || refuse "main has unpushed commits; push to origin/main first"
     [[ "$(git rev-list --count "HEAD..@{upstream}" 2>/dev/null || echo 1)" -eq 0 ]] \
