@@ -43,17 +43,28 @@ jobs:
       - name: cargo test
         run: cargo test
 
-      # 3. Early vuln gate (pre-build, blocking): Cargo.lock advisories +
-      #    Dockerfile misconfig checks.
-      - name: Trivy filesystem scan
+      # 3. Early vuln gate (pre-build): the gate step blocks HIGH/CRITICAL
+      #    only; the SARIF step never blocks and carries all severities so
+      #    the Security tab keeps full visibility.
+      - name: Trivy filesystem scan (gate)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,misconfig
+          scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: "1"
+
+      - name: Trivy filesystem scan (SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig
+          scan-ref: .
           format: sarif
           output: trivy-fs.sarif
+          exit-code: "0"
 
       # 4. Build + push multi-arch image with attestations and OCI annotations
       - name: Extract version from tag
@@ -120,17 +131,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 6. Late vuln gate (post-push, blocking): only findings with an
-      #    available fix. Scans the locally-built amd64 image.
-      - name: Trivy image scan
+      # 6. Late vuln gate (post-push): gate blocks HIGH/CRITICAL with an
+      #    available fix, scanning the locally-built amd64 image; the SARIF
+      #    step never blocks and carries all severities for the Security tab.
+      - name: Trivy image scan (gate)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/c4mbr0nn3/gh-release-notify:${{ steps.version.outputs.tag }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: "1"
+
+      - name: Trivy image scan (SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/c4mbr0nn3/gh-release-notify:${{ steps.version.outputs.tag }}
+          ignore-unfixed: true
           format: sarif
           output: trivy-image.sarif
+          exit-code: "0"
 
       # 7. SARIF uploads to the Security tab. Uploads run even when a scan
       #    blocked the job, but only if trivy actually produced the SARIF file.
