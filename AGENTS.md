@@ -67,25 +67,37 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 
 ## Releases
 
-Releases are cut via a single GitHub Actions workflow;
-`cargo-release` is invoked in CI, not locally.
+Releases are cut locally via `./scripts/release.sh` (flags: `--dry-run`,
+`--major`, `--minor`, `--patch`); a tag push to `main` then triggers a
+tag-driven GitHub Actions workflow that builds and publishes the image and
+the GitHub Release. No `workflow_dispatch` trigger exists.
 
-- `.github/workflows/release.yml` — `workflow_dispatch` with a
-  `patch|minor|major` input. Runs the verification gate (fmt/clippy/test),
-  then installs `cargo-release` 1.x and runs it against `release.toml`
-  (repo root), which bumps `Cargo.toml` + `Cargo.lock`, commits as
-  `chore: release v{version}`, tags `v{version}`, pushes to `main`.
-  Then builds and pushes a multi-arch (amd64 + arm64) Docker image to
-  `ghcr.io/c4mbr0nn3/gh-release-notify`. Then creates a GitHub Release
-  with auto-generated notes.
+- `scripts/release.sh` — local entry point. Infers the SemVer bump from
+  conventional commits via git-cliff defaults (breaking→major, feat→minor,
+  else→patch), or takes an explicit `--major|--minor|--patch`; `--dry-run`
+  previews. It enforces exact pinned tools (git-cliff 2.14.1,
+  cargo-release 1.1.5), runs the verification gate, then cargo-release
+  makes the release commit `chore: release v{version}` (Cargo.toml +
+  Cargo.lock + CHANGELOG.md via pre-release-hook), tags `v{version}`, and
+  pushes branch + tag.
+- `.github/workflows/release.yml` — triggered only by `v*` tag push:
+  gate → trivy fs scan (blocking HIGH/CRITICAL) → buildx multi-arch
+  (amd64 + arm64) image push to `ghcr.io/c4mbr0nn3/gh-release-notify`
+  (tags `v{ver}`/`{ver}`/`latest`, SBOM + provenance) → trivy image scan
+  `--ignore-unfixed` (blocking HIGH/CRITICAL) → SARIF uploads → installs
+  git-cliff 2.14.1 → GitHub Release with a git-cliff-generated body.
 
-### Verification gate in CI
+- **Lockstep toolchain-pin rule**: CI toolchain pin (1.98.1) and Dockerfile
+  builder pin (`rust:1.98.1-slim`) are bumped together in one commit,
+  always.
+- **Fix-forward rule**: on post-tag CI failure, no tag deletion, no revert
+  dance — fix forward on a new patch release.
 
-`release.yml` runs the full gate (`cargo fmt`, `cargo clippy -- -D
-warnings`, `cargo test`) before tagging. `cargo-release`'s `verify =
-true` in `release.toml` is a secondary pre-tag sanity check; the
-authoritative gate is the explicit fmt/clippy/test steps in
-`release.yml`.
+### Verification gate
+
+The script runs the full gate (`cargo fmt`, `cargo clippy -- -D warnings`,
+`cargo test`) locally before executing cargo-release, and `release.yml`
+runs the same gate again on tag push before building the image.
 
 ### Release config
 
@@ -105,6 +117,8 @@ authoritative gate is the explicit fmt/clippy/test steps in
 - Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
 - Plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
 - Release-workflow spec: `docs/superpowers/specs/2026-07-05-release-workflow-design.md`
-- Release-workflow plan: `docs/superpowers/plans/2026-07-05-release-workflow.md`
+- Release-workflow plan: `docs/superpowers/plans/2026-07-05-release-workflow.md` (superseded)
+- Local release-workflow spec: `docs/superpowers/specs/2026-09-12-local-release-workflow-design.md`
+- Local release-workflow plan: `docs/superpowers/plans/2026-09-12-local-release-workflow.md`
 - Progress ledger: `.superpowers/sdd/progress.md` (git-ignored scratch; recover from `git log` if destroyed).
 - Per-task briefs and reports live under `.superpowers/sdd/`.

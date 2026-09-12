@@ -1,5 +1,10 @@
 # Release workflow design — 2026-07-05
 
+> **SUPERSEDED**: This document describes the old CI-driven (`workflow_dispatch`)
+> release flow, which has been replaced by a local-script release flow
+> (`scripts/release.sh` + tag-triggered `.github/workflows/release.yml`).
+> See the current spec: `docs/superpowers/specs/2026-09-12-local-release-workflow-design.md`.
+
 Semantic-versioning tag workflow + tag-triggered GitHub Action that runs the
 project verification gate and publishes a multi-arch Docker image to GitHub
 Container Registry.

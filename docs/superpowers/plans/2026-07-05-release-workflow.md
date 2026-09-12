@@ -1,5 +1,10 @@
 # Release Workflow Implementation Plan
 
+> **SUPERSEDED**: This plan implements the old CI-driven (`workflow_dispatch`)
+> release flow, which has been replaced by a local-script release flow
+> (`scripts/release.sh` + tag-triggered `.github/workflows/release.yml`).
+> See the current spec: `docs/superpowers/specs/2026-09-12-local-release-workflow-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a manual-trigger release workflow (`release.yml`) that runs `cargo-release` to bump/tag/push, and a tag-triggered CI workflow (`ci.yml`) that runs the verification gate and builds/pushes a multi-arch Docker image to GHCR.
