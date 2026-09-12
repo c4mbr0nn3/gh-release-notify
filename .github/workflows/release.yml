@@ -1,6 +1,6 @@
 # Tag-triggered release pipeline (atomic).
 # A release starts locally: scripts/release.sh + cargo-release land the tag.
-# Pushing the tag to main runs this workflow: gate, vuln scans, multi-arch
+# A tag push triggers this workflow: gate, vuln scans, multi-arch
 # image build/push to GHCR, SARIF upload, git-cliff release body, GitHub Release.
 name: release
 
@@ -103,8 +103,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 4. Build amd64 image locally for the post-push trivy image scan:
+      #    the pushed ref is a multi-arch manifest list that trivy cannot
+      #    scan reliably; scanning a locally-loaded single-platform image
+      #    (same Dockerfile, same tags context) is the plan-approved fix.
+      - name: Build amd64 image locally for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # 5. Late vuln gate (post-push, blocking): only findings with an
-      #    available fix.
+      #    available fix. Scans the locally-built amd64 image.
       - name: Trivy image scan
         uses: aquasecurity/trivy-action@0.36.0
         with:
@@ -144,7 +175,7 @@ jobs:
 
       # 8. Render release body from cliff.toml
       - name: Generate changelog
-        run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" > release-body.md
+        run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" --strip all > release-body.md
 
       # 9. Create GitHub Release with the git-cliff body
       - name: Create GitHub Release
