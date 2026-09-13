@@ -1,7 +1,7 @@
 # --- builder ---
 # Builder toolchain is an exact pin, bumped only by commit, always in
 # lockstep with the CI toolchain pin.
-FROM rust:1.98.1-slim AS builder
+FROM rust:1.98.1-slim-trixie AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev ca-certificates \
@@ -19,10 +19,10 @@ RUN touch src/main.rs && cargo build --release
 # --- runtime ---
 # Runtime base floats on purpose: it picks up Debian security patches.
 # Trivy --ignore-unfixed in CI is the gate for what floats in.
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    libssl3 ca-certificates \
+    libssl3t64 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 ghrel
 

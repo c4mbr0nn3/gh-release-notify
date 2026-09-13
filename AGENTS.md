@@ -88,8 +88,9 @@ the GitHub Release. No `workflow_dispatch` trigger exists.
   git-cliff 2.14.1 → GitHub Release with a git-cliff-generated body.
 
 - **Lockstep toolchain-pin rule**: CI toolchain pin (1.98.1) and Dockerfile
-  builder pin (`rust:1.98.1-slim`) are bumped together in one commit,
-  always.
+  builder pin (`rust:1.98.1-slim-trixie`) are bumped together in one commit,
+  always. The builder and runtime stages must stay on the same Debian
+  release (both trixie) or the glibc-linked binary fails to start at runtime.
 - **Fix-forward rule**: on post-tag CI failure, no tag deletion, no revert
   dance — fix forward on a new patch release.
 

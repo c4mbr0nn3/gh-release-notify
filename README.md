@@ -142,7 +142,7 @@ src/
   scheduler.rs   run(): poll loop, first-run-no-email, graceful shutdown
 config.example.toml   sample config (with comments)
 .env.example          sample env file
-Dockerfile            multi-stage build (rust:slim -> debian:bookworm-slim)
+Dockerfile            multi-stage build (rust:slim -> debian:trixie-slim)
 docker-compose.yml     single service, config + state volumes
 ```
 

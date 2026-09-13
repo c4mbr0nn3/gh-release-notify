@@ -19,7 +19,7 @@ jobs:
       attestations: write # provenance/sbom attestations
       id-token: write # required for attestations
     steps:
-      # 1. Checkout + pinned toolchain (must match Dockerfile rust:1.98.1-slim)
+      # 1. Checkout + pinned toolchain (must match Dockerfile rust:1.98.1-slim-trixie)
       - name: Checkout
         uses: actions/checkout@v6
         with:
