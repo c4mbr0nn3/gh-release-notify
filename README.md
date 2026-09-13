@@ -108,8 +108,8 @@ Structured logs via `tracing`. Default level `info`:
 
 ```
 polling 2 repos
-fetching latest for fosrl/pangolin
 no change for fosrl/pangolin (still 1.19.4)
+no change for fosrl/newt (still 1.13.0)
 tick complete, sleeping 3600s
 ```
 
@@ -170,16 +170,6 @@ Build the release binary:
 ```bash
 cargo build --release
 ```
-
-## Design & plan
-
-- Spec: `docs/superpowers/specs/2026-07-04-gh-release-notify-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-07-04-gh-release-notify.md`
-- Release-workflow spec: `docs/superpowers/specs/2026-07-05-release-workflow-design.md`
-- Release-workflow plan: `docs/superpowers/plans/2026-07-05-release-workflow.md` (superseded)
-- Local release-workflow spec: `docs/superpowers/specs/2026-09-12-local-release-workflow-design.md`
-- Local release-workflow plan: `docs/superpowers/plans/2026-09-12-local-release-workflow.md`
-- Project conventions: `AGENTS.md`
 
 ## Releases
 
