@@ -6,6 +6,7 @@ mod scheduler;
 mod state;
 
 use clap::Parser;
+use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -80,19 +81,20 @@ async fn main() {
         }
     };
 
-    let mailer = match notify::Mailer::new(&cfg) {
-        Ok(m) => m,
-        Err(e) => {
-            error!("failed to build mailer: {e}");
-            std::process::exit(1);
-        }
-    };
-
+    let cfg = Arc::new(cfg);
+    let (config_tx, config_rx) = tokio::sync::watch::channel(cfg.clone());
+    let (status_tx, _status_rx) =
+        tokio::sync::watch::channel(Arc::new(scheduler::StatusSnapshot {
+            repos: Vec::new(),
+            last_poll_finished_at: None,
+            next_poll_at: None,
+        }));
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    let cfg_clone = cfg.clone();
-    let handle = tokio::spawn(async move {
-        if let Err(e) = scheduler::run(cfg_clone, github, state, mailer, shutdown_rx).await {
+    let _config_tx = config_tx;
+
+    let scheduler_handle = tokio::spawn(async move {
+        if let Err(e) = scheduler::run(config_rx, github, state, status_tx, shutdown_rx).await {
             error!("scheduler exited with error: {e}");
         }
     });
@@ -103,7 +105,7 @@ async fn main() {
     }
 
     let _ = shutdown_tx.send(true);
-    let _ = handle.await;
+    let _ = scheduler_handle.await;
     info!("shutdown complete");
 }
 
