@@ -4,6 +4,7 @@ mod github;
 mod notify;
 mod scheduler;
 mod state;
+mod ui;
 
 use clap::Parser;
 use std::sync::Arc;
