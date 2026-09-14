@@ -55,7 +55,7 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 - **No comments in Rust source files** unless explicitly requested. The `config.example.toml`, `.env.example`, `Dockerfile`, and `docker-compose.yml` are documentation files and MAY contain comments.
 - **No `unwrap`/`expect`/`panic` in non-test code.** The `Regex::new(...).unwrap()` calls in `config.rs` and the `expect("install SIGTERM handler")` in `main.rs::unix_sigterm` are deliberate, plan-mandated exceptions (compile-time-constant patterns / fatal-startup path).
 - **All fallible operations return `Result`.** Handle with `?` at task boundaries or log-and-continue; never swallow errors silently.
-- **Out of scope (do NOT add):** HTML email, pre-release notifications, HTTP health endpoint, web UI, retry/backoff beyond "try again next tick", DB-backed state, per-repo stable/pre-release override.
+- **Out of scope (do NOT add):** HTML email, pre-release notifications, retry/backoff beyond "try again next tick", DB-backed state, per-repo stable/pre-release override.
 - **State semantics:** first run for a repo with no stored tag stores the tag WITHOUT sending email. On SMTP failure, do NOT update state (retry email next tick). State save is atomic (write `<path>.tmp` then rename).
 
 ## Config & env
@@ -64,6 +64,47 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 - Env overrides: `SMTP_PASSWORD` overrides `[smtp].password`; `GITHUB_TOKEN` (if set and non-empty) used for bearer auth; `RUST_LOG` controls tracing filter (default `info`).
 - For Docker/compose deployment `state_path` must be `/state/state.json` (the mounted volume), not `./state.json`.
 - Optional `cron_expression` in config: standard 5-field cron expression (UTC) that takes precedence over `poll_interval_seconds` when present. Auto-prepends seconds field for the `cron` crate. Day-of-week: 1=Sunday .. 7=Saturday.
+- `[ui]` section (optional): `bind_addr` (default `127.0.0.1`), `port`
+  (default `8080`), `admin_token` (default empty = no login),
+  `trust_proxy_auth` (default false). `bind_addr`/`port` are read-only in
+  the UI.
+- `ADMIN_TOKEN` env var overrides `[ui].admin_token`. Leaving both unset
+  means the UI runs with no login (open mode).
+- Web UI deps: `axum`, `subtle` (constant-time compare), `getrandom`
+  (session entropy), `toml_edit` (comment-preserving config writes);
+  dev-dep `tower` (`ServiceExt::oneshot` for router tests).
+
+## Web UI
+
+An axum 0.8 server embedded in the daemon. The page is a single
+`src/ui/index.html` with vanilla JS (`src/ui/app.js`) and vendored Pico CSS
+2.1.1, all included with `include_str!` via `src/ui/assets.rs` — no JS build
+step, no npm, no separate frontend artifact.
+
+Invariants:
+
+- Exactly one auth mode at startup: **token** (session cookie + optional
+  `Authorization: Bearer`), **proxy** (`Remote-User` header, spoofable if the
+  port is directly reachable), or **open**. `admin_token` and
+  `trust_proxy_auth = true` together is a **startup error**.
+- No secret value is ever returned by any endpoint or written to a log.
+  `GET /api/config` exposes only `admin_token_set: bool` and `env_managed`
+  flags, never values.
+- Mutations (`PUT /api/config`, `POST /api/logout`) require
+  `X-Requested-With: gh-release-notify` (CSRF defense with `SameSite=Strict`).
+- `bind_addr` and `port` are file/env-only, never UI-editable.
+- Config writes go through `config_writeback::apply`: `toml_edit` mutation,
+  re-parse and `validate()` on the rendered bytes, then atomic tmp+rename.
+  Validation failure never touches the target file.
+- The UI's only filesystem write target is the config path. It never writes
+  `state_path`.
+- Runtime reload is `tokio::sync::watch<Arc<Config>>`: the scheduler re-reads
+  each tick and re-arms its sleep on `config_rx.changed()`. Status flows the
+  other way on `watch<Arc<StatusSnapshot>>`; `StateStore` ownership is
+  unchanged and `src/state.rs` is not modified by UI work.
+- Session ids come from `getrandom::fill`, never `rand`.
+- **Post-implementation review pending:** this section should be revisited with
+  the `writing-for-agents` skill now that the implementation has landed.
 
 ## Releases
 
