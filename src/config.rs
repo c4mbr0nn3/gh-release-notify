@@ -59,7 +59,7 @@ impl Config {
         }
     }
 
-    fn validate(&mut self) -> Result<()> {
+    pub fn validate(&mut self) -> Result<()> {
         if self.poll_interval_seconds < 60 {
             bail!("poll_interval_seconds must be >= 60");
         }

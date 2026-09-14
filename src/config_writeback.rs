@@ -1,8 +1,12 @@
+#[allow(dead_code)]
+use anyhow::Result;
 use serde::Deserialize;
 use std::fmt;
+use tracing::info;
 
-use crate::config::Encryption;
+use crate::config::{Config, Encryption};
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SaveError {
     Unwritable(String),
@@ -20,6 +24,7 @@ impl fmt::Display for SaveError {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ConfigEdit {
     pub poll_interval_seconds: u64,
@@ -44,6 +49,103 @@ pub struct ConfigEdit {
     pub trust_proxy_auth: Option<bool>,
     #[serde(default)]
     pub state_path: Option<String>,
+}
+
+#[allow(dead_code)]
+pub fn apply(path: &str, edit: &ConfigEdit) -> Result<Config, SaveError> {
+    for (name, present) in [
+        ("state_path", edit.state_path.is_some()),
+        ("ui.bind_addr", edit.ui_bind_addr.is_some()),
+        ("ui.port", edit.ui_port.is_some()),
+        ("ui.trust_proxy_auth", edit.trust_proxy_auth.is_some()),
+    ] {
+        if present {
+            return Err(SaveError::Invalid(format!(
+                "{name} is read-only and cannot be set through the UI"
+            )));
+        }
+    }
+
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| classify(&e, &format!("failed to read {path}")))?;
+    let mut doc: toml_edit::DocumentMut = raw
+        .parse()
+        .map_err(|e| SaveError::Invalid(format!("failed to parse {path}: {e}")))?;
+
+    doc["poll_interval_seconds"] = toml_edit::value(edit.poll_interval_seconds as i64);
+    doc["sender"] = toml_edit::value(edit.sender.as_str());
+    doc["recipients"] = string_array(&edit.recipients);
+    doc["repos"] = string_array(&edit.repos);
+    match &edit.cron_expression {
+        Some(expr) => doc["cron_expression"] = toml_edit::value(expr.as_str()),
+        None => {
+            doc.remove("cron_expression");
+        }
+    }
+
+    if doc.get("smtp").is_none() {
+        doc["smtp"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    doc["smtp"]["host"] = toml_edit::value(edit.smtp_host.as_str());
+    doc["smtp"]["port"] = toml_edit::value(edit.smtp_port as i64);
+    doc["smtp"]["encryption"] = toml_edit::value(encryption_str(edit.smtp_encryption));
+    doc["smtp"]["username"] = toml_edit::value(edit.smtp_username.as_str());
+
+    if let Some(pw) = &edit.smtp_password {
+        if !pw.is_empty() {
+            doc["smtp"]["password"] = toml_edit::value(pw.as_str());
+        }
+    }
+
+    if let Some(token) = &edit.admin_token {
+        if doc.get("ui").is_none() {
+            doc["ui"] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        doc["ui"]["admin_token"] = toml_edit::value(token.as_str());
+    }
+
+    let rendered = doc.to_string();
+    let mut cfg: Config = toml::from_str(&rendered)
+        .map_err(|e| SaveError::Invalid(format!("edited config does not parse: {e}")))?;
+    cfg.config_path = path.to_string();
+    cfg.validate()
+        .map_err(|e| SaveError::Invalid(e.to_string()))?;
+
+    let tmp = format!("{path}.tmp");
+    std::fs::write(&tmp, &rendered).map_err(|e| classify(&e, &format!("failed to write {tmp}")))?;
+    std::fs::rename(&tmp, path)
+        .map_err(|e| classify(&e, &format!("failed to rename {tmp} -> {path}")))?;
+
+    info!("config updated at {path}");
+    Ok(cfg)
+}
+
+#[allow(dead_code)]
+fn classify(e: &std::io::Error, ctx: &str) -> SaveError {
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem => {
+            SaveError::Unwritable(format!("{ctx}: {e}"))
+        }
+        _ => SaveError::Io(format!("{ctx}: {e}")),
+    }
+}
+
+#[allow(dead_code)]
+fn string_array(items: &[String]) -> toml_edit::Item {
+    let mut arr = toml_edit::Array::new();
+    for i in items {
+        arr.push(i.as_str());
+    }
+    toml_edit::Item::Value(toml_edit::Value::Array(arr))
+}
+
+#[allow(dead_code)]
+fn encryption_str(e: Encryption) -> &'static str {
+    match e {
+        Encryption::StartTls => "starttls",
+        Encryption::Tls => "tls",
+        Encryption::None => "none",
+    }
 }
 
 #[cfg(test)]
@@ -144,7 +246,9 @@ password = "secret"
         let mut edit = edit_from(&path);
         edit.smtp_password = Some(String::new());
         apply(&path, &edit).unwrap();
-        assert!(std::fs::read_to_string(&path).unwrap().contains("password = \"secret\""));
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("password = \"secret\""));
     }
 
     #[test]
@@ -153,7 +257,9 @@ password = "secret"
         let path = write(dir.path(), sample_config());
         let edit = edit_from(&path);
         apply(&path, &edit).unwrap();
-        assert!(std::fs::read_to_string(&path).unwrap().contains("password = \"secret\""));
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("password = \"secret\""));
     }
 
     #[test]
@@ -175,6 +281,8 @@ password = "secret"
         edit.state_path = Some("/tmp/evil.json".to_string());
         let err = apply(&path, &edit).unwrap_err();
         assert!(matches!(err, SaveError::Invalid(_)), "got {err:?}");
-        assert!(!std::fs::read_to_string(&path).unwrap().contains("evil.json"));
+        assert!(!std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("evil.json"));
     }
 }
