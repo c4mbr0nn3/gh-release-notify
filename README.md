@@ -47,6 +47,7 @@ password = "changeme"                # prefer SMTP_PASSWORD env var instead
 | `CONFIG_PATH`   | Path to the config file (also settable via `--config` CLI arg).  | `./config.toml`|
 | `GITHUB_TOKEN`  | Optional GitHub PAT. If set, sent as `Authorization: Bearer`.   | (unset)        |
 | `SMTP_PASSWORD` | Overrides `[smtp].password`. Keeps the secret out of the file.  | (unset)        |
+| `ADMIN_TOKEN`   | Admin token for the web UI login. Alternative to `[ui].admin_token`. | (unset)        |
 | `RUST_LOG`      | tracing filter directive (`info`, `debug`, `gh_release_notify=debug`). | `info`    |
 
 Copy `.env.example` to `.env` and fill in secrets:
@@ -58,6 +59,7 @@ cp .env.example .env
 ```
 GITHUB_TOKEN=ghp_xxx
 SMTP_PASSWORD=your-smtp-password
+ADMIN_TOKEN=your-admin-token
 ```
 
 ## Run locally
@@ -78,7 +80,7 @@ docker build -t gh-release-notify:latest .
 podman build -t gh-release-notify:latest .
 ```
 
-Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence). Use whichever compose implementation you have available:
+Run with `docker-compose.yml` (mounts `config.toml` read-write so the web UI can save edits, and a `./state` directory for persistence). Use whichever compose implementation you have available:
 
 ```bash
 docker compose up -d        # docker compose plugin
@@ -97,6 +99,47 @@ mkdir -p ./state && sudo chown 10001:10001 ./state
 ```
 
 (If you see `failed to write state tmp file ... Permission denied` in the logs, this is the fix.)
+
+## Web UI
+
+The daemon serves a small web UI for status and configuration, embedded in the binary (no build step, no npm). By default it listens on `127.0.0.1:8080`.
+
+- `/` — status page (watched repos and last-seen tags, last/next poll) plus a settings form.
+- `/healthz` — plain JSON health check (public).
+
+Config edits from the UI take effect **without a restart** (the scheduler re-reads the config on the next tick). Edits made by hand to `config.toml` require a restart.
+
+### Auth modes
+
+Access is gated by **exactly one** of three modes, resolved at startup:
+
+1. **Admin token** — set `[ui].admin_token` in `config.toml`, or (preferred) the `ADMIN_TOKEN` environment variable. The UI shows a login form; the token is exchanged for an in-memory session cookie (12h expiry, `HttpOnly; SameSite=Strict`, `Secure` behind an HTTPS proxy). A restart logs you out.
+2. **Trusted proxy** — set `ui.trust_proxy_auth = true`. The UI accepts the `Remote-User` header set by your reverse proxy, with no login page.
+3. **Open** — no token and no proxy trust. Anyone who can reach the port can edit the config. Only acceptable on a trusted network.
+
+Configuring a token **and** `trust_proxy_auth = true` together is a **startup error** — the daemon refuses to start rather than run with an ambiguous security posture.
+
+Generate a token with:
+
+```bash
+openssl rand -hex 32
+```
+
+### Reverse proxy
+
+The UI binds `127.0.0.1` by default, so it is not reachable from other hosts until you expose it. To put it behind a reverse proxy:
+
+- Route the proxy to `gh-release-notify:8080` on the `gh-release-notify-net` network.
+- For header-based auth (Authelia, Pangolin, etc.), set `trust_proxy_auth = true` and have the proxy set `Remote-User`. Note this is **spoofable if the UI port is directly reachable**, so make sure only the proxy can reach it.
+- The shipped `docker-compose.yml` maps the port to `127.0.0.1:8080` on the host and sets `bind_addr = "0.0.0.0"` inside the container (container loopback is not reachable from the host). Keep the host mapping on loopback unless you intend LAN exposure.
+
+### Read-only config
+
+If the config file is mounted or permissioned read-only, the UI detects this, shows a banner, and disables saving. Mounting `./config.toml:/config/config.toml:ro` is a supported hardening option.
+
+### Security posture
+
+The UI can rewrite the file that holds the SMTP password, so in a read-write container deployment an admin token or proxy auth is effectively **mandatory**. No secret value is ever returned by any endpoint or written to the logs. Binding to `0.0.0.0` with no token logs a warning at startup. TLS is terminated by your reverse proxy; the daemon does not do TLS itself.
 
 ## First-run behavior
 
@@ -134,12 +177,19 @@ Set `RUST_LOG=debug` for more detail.
 
 ```
 src/
-  main.rs        CLI, tracing, wire modules, signal handling
-  config.rs      Config + SmtpConfig + Encryption: parse & validate config.toml
+  main.rs        CLI, tracing, wire modules, config/status watch channels, signal handling
+  config.rs      Config + SmtpConfig + UiConfig + Encryption + AuthMode: parse & validate config.toml
   github.rs      GithubClient + Release + GithubError: fetch latest stable release
   state.rs       StateStore: JSON-backed last-seen tags (atomic save)
   notify.rs      Mailer + build_body: plain-text email via SMTP (lettre async)
   scheduler.rs   run(): poll loop, first-run-no-email, graceful shutdown
+  config_writeback.rs  ConfigEdit + SaveError + apply(): comment-preserving atomic config writes
+  ui/mod.rs      axum router, AppState, handlers, tests
+  ui/auth.rs     auth middleware, sessions, login limiter
+  ui/assets.rs   include_str! constants for the embedded page
+  ui/index.html  embedded UI page
+  ui/app.js      embedded client logic
+  ui/pico.classless.min.css  vendored Pico CSS 2.1.1 (MIT)
 config.example.toml   sample config (with comments)
 .env.example          sample env file
 Dockerfile            multi-stage build (rust:slim -> debian:trixie-slim)
@@ -163,6 +213,7 @@ cargo test config
 cargo test state
 cargo test github
 cargo test notify
+cargo test ui
 ```
 
 Build the release binary:
@@ -224,3 +275,7 @@ For local development builds, use `docker compose up --build` (the
 ## License
 
 Licensed under the [MIT License](LICENSE).
+
+### Third-party assets
+
+The web UI embeds **Pico CSS v2.1.1** (`pico.classless.min.css`), copyright 2019-2025, licensed under the MIT License.
