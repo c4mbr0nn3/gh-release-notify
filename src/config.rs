@@ -189,10 +189,8 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ENV_LOCK;
     use std::io::Write;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn write_config(dir: &std::path::Path, contents: &str) -> std::path::PathBuf {
         let p = dir.join("config.toml");

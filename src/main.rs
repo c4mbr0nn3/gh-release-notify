@@ -6,6 +6,9 @@ mod scheduler;
 mod state;
 mod ui;
 
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 use clap::Parser;
 use std::sync::Arc;
 use tracing::{error, info};
