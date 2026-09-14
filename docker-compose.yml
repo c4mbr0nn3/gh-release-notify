@@ -11,12 +11,18 @@ services:
     cpus: "0.50"
     networks:
       - gh-release-notify-net
+    # The config is mounted read-write so the web UI can save edits.
+    # Mount it `:ro` instead to keep the file immutable; the UI then reports
+    # the config as not writable and disables saving.
     volumes:
-      - ./config.toml:/config/config.toml:ro
+      - ./config.toml:/config/config.toml
       - ./state:/state
+    ports:
+      - "127.0.0.1:8080:8080"
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - CONFIG_PATH=/config/config.toml
       - RUST_LOG=info
 
