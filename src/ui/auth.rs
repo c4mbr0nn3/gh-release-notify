@@ -51,7 +51,6 @@ impl Sessions {
         }
     }
 
-    #[allow(dead_code)]
     pub fn destroy(&self, id: &str) {
         if let Ok(mut m) = self.map.lock() {
             m.remove(id);
@@ -159,7 +158,6 @@ pub fn cookie_header(session: &str, secure: bool) -> String {
     c
 }
 
-#[allow(dead_code)]
 pub fn clear_cookie_header() -> String {
     "grn_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0".to_string()
 }

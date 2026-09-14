@@ -17,7 +17,6 @@ use tokio::sync::watch;
 use tracing::info;
 
 use crate::config::Config;
-use crate::config_writeback::ConfigEdit;
 use crate::scheduler::StatusSnapshot;
 
 #[allow(unused_imports)]
@@ -150,19 +149,110 @@ async fn login(
         .into_response()
 }
 
-async fn get_config(State(_state): State<AppState>) -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+async fn get_config(State(state): State<AppState>) -> Response {
+    let cfg = state.config_rx.borrow().clone();
+    let status = state.status_rx.borrow().clone();
+    let encryption = serde_json::to_value(cfg.smtp.encryption).unwrap_or_default();
+    let auth_mode = match cfg.ui_auth_mode() {
+        crate::config::AuthMode::Token => "token",
+        crate::config::AuthMode::Proxy => "proxy",
+        crate::config::AuthMode::Open => "open",
+    };
+    let config_writable = probe_config_writable(&state.config_path);
+    axum::Json(json!({
+        "config": {
+            "poll_interval_seconds": cfg.poll_interval_seconds,
+            "cron_expression": cfg.cron_expression,
+            "sender": cfg.sender,
+            "repos": cfg.repos,
+            "recipients": cfg.recipients,
+            "smtp": {
+                "host": cfg.smtp.host,
+                "port": cfg.smtp.port,
+                "encryption": encryption,
+                "username": cfg.smtp.username,
+            },
+            "ui": {
+                "bind_addr": cfg.ui.bind_addr,
+                "port": cfg.ui.port,
+                "admin_token_set": !cfg.admin_token().is_empty(),
+                "trust_proxy_auth": cfg.ui.trust_proxy_auth,
+            },
+        },
+        "readonly": { "state_path": cfg.state_path },
+        "env_managed": {
+            "smtp_password": std::env::var("SMTP_PASSWORD").is_ok(),
+            "github_token": cfg.github_token().is_some(),
+        },
+        "status": {
+            "repos": status.repos,
+            "last_poll_finished_at": status.last_poll_finished_at,
+            "next_poll_at": status.next_poll_at,
+        },
+        "config_writable": config_writable,
+        "auth_mode": auth_mode,
+    }))
+    .into_response()
+}
+
+fn probe_config_writable(path: &str) -> bool {
+    let tmp = format!("{}.tmp", path);
+    let opened = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&tmp);
+    match opened {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&tmp);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 async fn put_config(
-    State(_state): State<AppState>,
-    axum::Json(_edit): axum::Json<ConfigEdit>,
+    State(state): State<AppState>,
+    axum::Json(edit): axum::Json<crate::config_writeback::ConfigEdit>,
 ) -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    let path = state.config_path.clone();
+    let result =
+        tokio::task::spawn_blocking(move || crate::config_writeback::apply(&path, &edit)).await;
+
+    match result {
+        Ok(Ok(cfg)) => {
+            let _ = state.config_tx.send(Arc::new(cfg));
+            (StatusCode::OK, axum::Json(json!({"ok": true}))).into_response()
+        }
+        Ok(Err(crate::config_writeback::SaveError::Invalid(m))) => {
+            (StatusCode::BAD_REQUEST, axum::Json(json!({"error": m}))).into_response()
+        }
+        Ok(Err(crate::config_writeback::SaveError::Unwritable(m))) => {
+            (StatusCode::CONFLICT, axum::Json(json!({"error": m}))).into_response()
+        }
+        Ok(Err(crate::config_writeback::SaveError::Io(m))) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": m})),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": format!("task join error: {e}")})),
+        )
+            .into_response(),
+    }
 }
 
-async fn logout(State(_state): State<AppState>) -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(id) = auth::session_cookie_from_headers(&headers) {
+        state.sessions.destroy(&id);
+    }
+    (
+        StatusCode::OK,
+        [(header::SET_COOKIE, auth::clear_cookie_header())],
+        axum::Json(json!({"ok": true})),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
@@ -200,7 +290,7 @@ trust_proxy_auth = {proxy}
         Config::load(p.to_str().unwrap()).unwrap()
     }
 
-    async fn test_app(cfg: Config) -> Router {
+    fn build_app(cfg: Config, path: &str) -> Router {
         let cfg = Arc::new(cfg);
         let (config_tx, config_rx) = watch::channel(cfg);
         let (_status_tx, status_rx) = watch::channel(Arc::new(StatusSnapshot {
@@ -212,7 +302,7 @@ trust_proxy_auth = {proxy}
             config_rx,
             config_tx,
             status_rx,
-            config_path: "unused".to_string(),
+            config_path: path.to_string(),
             sessions: Arc::new(Sessions::default()),
             limiter: Arc::new(LoginLimiter::default()),
             started_at: Instant::now(),
@@ -220,10 +310,15 @@ trust_proxy_auth = {proxy}
         router(state)
     }
 
-    async fn token_app(token: &str) -> Router {
-        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        let guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         env::remove_var("ADMIN_TOKEN");
-        test_app(test_config(token, false)).await
+        env::remove_var("SMTP_PASSWORD");
+        guard
+    }
+
+    fn app(token: &str, proxy: bool) -> Router {
+        build_app(test_config(token, proxy), "unused")
     }
 
     fn req(uri: &str) -> Request<Body> {
@@ -232,14 +327,16 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn unauthenticated_request_is_rejected() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         let resp = app.oneshot(req("/api/config")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
     async fn wrong_token_is_rejected() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         let r = Request::builder()
             .uri("/api/config")
             .header("authorization", "Bearer nope")
@@ -251,7 +348,8 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn valid_bearer_token_passes_the_auth_layer() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         let r = Request::builder()
             .uri("/api/config")
             .header("authorization", "Bearer secret")
@@ -263,7 +361,8 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn public_routes_need_no_auth() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         for uri in ["/", "/app.js", "/pico.css", "/healthz"] {
             let resp = app.clone().oneshot(req(uri)).await.unwrap();
             assert_ne!(
@@ -288,7 +387,8 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn index_and_healthz_return_200() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         let resp = app.clone().oneshot(req("/")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let resp = app.oneshot(req("/healthz")).await.unwrap();
@@ -297,14 +397,16 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn open_mode_allows_everything() {
-        let app = token_app("").await;
+        let _guard = lock_env();
+        let app = app("", false);
         let resp = app.oneshot(req("/api/config")).await.unwrap();
         assert_ne!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
     async fn mutation_without_custom_header_is_rejected() {
-        let app = token_app("secret").await;
+        let _guard = lock_env();
+        let app = app("secret", false);
         let r = Request::builder()
             .method("PUT")
             .uri("/api/config")
@@ -318,10 +420,95 @@ trust_proxy_auth = {proxy}
 
     #[tokio::test]
     async fn proxy_mode_rejects_absent_remote_user() {
-        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        env::remove_var("ADMIN_TOKEN");
-        let app = test_app(test_config("", true)).await;
+        let _guard = lock_env();
+        let app = app("", true);
         let resp = app.oneshot(req("/api/config")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn valid_bearer_token_is_accepted() {
+        let _guard = lock_env();
+        let app = app("secret", false);
+        let r = Request::builder()
+            .uri("/api/config")
+            .header("authorization", "Bearer secret")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(r).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn valid_session_cookie_is_accepted() {
+        let _guard = lock_env();
+        let app = app("secret", false);
+        let r = Request::builder()
+            .method("POST")
+            .uri("/login")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"admin_token":"secret"}"#))
+            .unwrap();
+        let resp = app.clone().oneshot(r).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let cookie = resp
+            .headers()
+            .get("set-cookie")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(cookie.starts_with("grn_session="));
+        let session = cookie.split(';').next().unwrap();
+        let r = Request::builder()
+            .uri("/api/config")
+            .header("cookie", session)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(r).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn proxy_mode_accepts_remote_user() {
+        let _guard = lock_env();
+        let app = app("", true);
+        let r = Request::builder()
+            .uri("/api/config")
+            .header("remote-user", "operator")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(r).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn no_secret_appears_in_config_payload() {
+        let _guard = lock_env();
+        let app = app("TOP-SECRET-ADMIN-TOKEN", false);
+        let r = Request::builder()
+            .uri("/api/config")
+            .header("authorization", "Bearer TOP-SECRET-ADMIN-TOKEN")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(r).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            !body.contains("TOP-SECRET-ADMIN-TOKEN"),
+            "admin token leaked: {body}"
+        );
+        assert!(
+            !body.contains("secret"),
+            "smtp password literal 'secret' leaked: {body}"
+        );
+        assert!(body.contains("admin_token_set"), "flag missing: {body}");
+        assert!(
+            body.contains("true"),
+            "admin_token_set should be true: {body}"
+        );
     }
 }

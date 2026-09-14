@@ -70,7 +70,6 @@ fn default_ui_port() -> u16 {
     8080
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMode {
     Token,
@@ -100,7 +99,6 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)]
     pub fn ui_auth_mode(&self) -> AuthMode {
         if !self.admin_token().is_empty() {
             AuthMode::Token
