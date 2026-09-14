@@ -49,9 +49,21 @@ const setMsg = (node, text) => {
   node.textContent = text;
 };
 
+const REFRESH_MS = 15000;
+let refreshTimer = null;
+let settingsVisible = false;
+
+function scheduleRefresh() {
+  if (refreshTimer !== null) return;
+  refreshTimer = setInterval(() => {
+    if (!document.hidden) refreshStatus();
+  }, REFRESH_MS);
+}
+
 let lastAuthMode = null;
 
 function showSettings(show) {
+  settingsVisible = show;
   el("dashboard").hidden = !show;
   el("settings-section").hidden = !show;
   el("logout-btn").hidden = !show;
@@ -63,10 +75,36 @@ function applyAuthMode(mode) {
   if (mode !== "token") el("login-section").hidden = true;
 }
 
+function renderStatus(st) {
+  const body = el("status-repos-body");
+  clearRows(body);
+  for (const r of st.repos || []) {
+    const tr = document.createElement("tr");
+    const td1 = document.createElement("td");
+    td1.textContent = r.repo;
+    const td2 = document.createElement("td");
+    td2.textContent = r.last_seen || "no stable release seen yet";
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    body.appendChild(tr);
+  }
+  if ((st.repos || []).length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 2;
+    td.textContent = "No repositories tracked yet.";
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+  el("status-last-poll").textContent = st.last_poll_finished_at
+    ? fmtWhen(st.last_poll_finished_at)
+    : "no poll has run yet";
+  el("status-next-poll").textContent = fmtWhen(st.next_poll_at);
+}
+
 function render(data) {
   const cfg = data.config;
   const ro = data.readonly;
-  const st = data.status;
   const em = data.env_managed || {};
 
   showSettings(true);
@@ -113,30 +151,7 @@ function render(data) {
     makeRow(recipList, { type: "email", placeholder: "you@example.com" });
   }
 
-  const body = el("status-repos-body");
-  clearRows(body);
-  for (const r of st.repos || []) {
-    const tr = document.createElement("tr");
-    const td1 = document.createElement("td");
-    td1.textContent = r.repo;
-    const td2 = document.createElement("td");
-    td2.textContent = r.last_seen || "no stable release seen yet";
-    tr.appendChild(td1);
-    tr.appendChild(td2);
-    body.appendChild(tr);
-  }
-  if ((st.repos || []).length === 0) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 2;
-    td.textContent = "No repositories tracked yet.";
-    tr.appendChild(td);
-    body.appendChild(tr);
-  }
-  el("status-last-poll").textContent = st.last_poll_finished_at
-    ? fmtWhen(st.last_poll_finished_at)
-    : "no poll has run yet";
-  el("status-next-poll").textContent = fmtWhen(st.next_poll_at);
+  renderStatus(data.status);
 
   el("readonly-state-path").textContent = ro.state_path;
   el("readonly-bind-addr").textContent = cfg.ui.bind_addr;
@@ -176,6 +191,18 @@ function collectEdit() {
   const pw = el("smtp-password").value;
   if (pw) edit.smtp_password = pw;
   return edit;
+}
+
+async function refreshStatus() {
+  if (!settingsVisible) return;
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.status) renderStatus(data.status);
+  } catch (e) {
+    void e;
+  }
 }
 
 async function loadConfig() {
@@ -229,6 +256,7 @@ async function saveConfig(ev) {
       setMsg(msg, "Saved.");
       await loadConfig();
       setMsg(el("settings-message"), "Saved.");
+      setTimeout(refreshStatus, 1500);
     } else {
       setMsg(msg, data.error || ("Save failed (HTTP " + res.status + ")"));
     }
@@ -323,3 +351,4 @@ function bind() {
 
 bind();
 loadConfig();
+scheduleRefresh();

@@ -24,6 +24,35 @@ pub struct StatusSnapshot {
     pub next_poll_at: Option<DateTime<Utc>>,
 }
 
+fn compute_next_poll(cfg: &Config, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    match &cfg.cron_schedule {
+        Some(schedule) => schedule.after(&now).next(),
+        None => Some(now + chrono::Duration::seconds(cfg.poll_interval_seconds as i64)),
+    }
+}
+
+fn publish(
+    status_tx: &watch::Sender<Arc<StatusSnapshot>>,
+    cfg: &Config,
+    state: &StateStore,
+    last_poll_finished_at: Option<DateTime<Utc>>,
+    next_poll_at: Option<DateTime<Utc>>,
+) {
+    let snapshot = StatusSnapshot {
+        repos: cfg
+            .repos
+            .iter()
+            .map(|r| RepoStatus {
+                repo: r.clone(),
+                last_seen: state.last_seen(r).map(|s| s.to_string()),
+            })
+            .collect(),
+        last_poll_finished_at,
+        next_poll_at,
+    };
+    status_tx.send_replace(Arc::new(snapshot));
+}
+
 pub async fn run(
     mut config_rx: watch::Receiver<Arc<Config>>,
     github: GithubClient,
@@ -31,6 +60,18 @@ pub async fn run(
     status_tx: watch::Sender<Arc<StatusSnapshot>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
+    let mut last_poll_finished_at: Option<DateTime<Utc>> = None;
+    {
+        let cfg = config_rx.borrow().clone();
+        let now = Utc::now();
+        publish(
+            &status_tx,
+            &cfg,
+            &state,
+            last_poll_finished_at,
+            compute_next_poll(&cfg, now),
+        );
+    }
     loop {
         let cfg = config_rx.borrow().clone();
         let interval = Duration::from_secs(cfg.poll_interval_seconds);
@@ -88,23 +129,15 @@ pub async fn run(
         }
 
         let now = Utc::now();
-        let next_poll_at = match &cfg.cron_schedule {
-            Some(schedule) => schedule.after(&now).next(),
-            None => Some(now + chrono::Duration::seconds(cfg.poll_interval_seconds as i64)),
-        };
-        let snapshot = StatusSnapshot {
-            repos: cfg
-                .repos
-                .iter()
-                .map(|r| RepoStatus {
-                    repo: r.clone(),
-                    last_seen: state.last_seen(r).map(|s| s.to_string()),
-                })
-                .collect(),
-            last_poll_finished_at: Some(now),
+        let next_poll_at = compute_next_poll(&cfg, now);
+        last_poll_finished_at = Some(now);
+        publish(
+            &status_tx,
+            &cfg,
+            &state,
+            last_poll_finished_at,
             next_poll_at,
-        };
-        status_tx.send_replace(Arc::new(snapshot));
+        );
 
         let duration = match next_poll_at {
             Some(next_dt) => {
@@ -123,6 +156,15 @@ pub async fn run(
         tokio::select! {
             _ = tokio::time::sleep(duration) => {}
             _ = config_rx.changed() => {
+                let cfg = config_rx.borrow().clone();
+                let now = Utc::now();
+                publish(
+                    &status_tx,
+                    &cfg,
+                    &state,
+                    last_poll_finished_at,
+                    compute_next_poll(&cfg, now),
+                );
                 info!("config changed, recomputing next poll");
             }
             _ = shutdown.changed() => {

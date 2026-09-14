@@ -120,7 +120,7 @@ async fn main() {
         config_rx: config_rx.clone(),
         status_rx,
         config_path: cfg.config_path.clone(),
-        config_tx,
+        config_tx: config_tx.clone(),
         sessions: Arc::new(ui::Sessions::default()),
         limiter: Arc::new(ui::LoginLimiter::default()),
         started_at: std::time::Instant::now(),
@@ -138,6 +138,8 @@ async fn main() {
             error!("scheduler exited with error: {e}");
         }
     });
+
+    let _config_tx = config_tx;
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => info!("received SIGINT"),
