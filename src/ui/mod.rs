@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod assets;
 mod auth;
 
@@ -19,7 +17,6 @@ use tracing::info;
 use crate::config::Config;
 use crate::scheduler::StatusSnapshot;
 
-#[allow(unused_imports)]
 pub use crate::config::AuthMode;
 pub use auth::{LoginLimiter, Sessions};
 

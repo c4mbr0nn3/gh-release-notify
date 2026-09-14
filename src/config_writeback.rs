@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 use anyhow::Result;
 use serde::Deserialize;
 use std::fmt;
@@ -6,7 +5,6 @@ use tracing::info;
 
 use crate::config::{Config, Encryption};
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SaveError {
     Unwritable(String),
@@ -24,7 +22,6 @@ impl fmt::Display for SaveError {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ConfigEdit {
     pub poll_interval_seconds: u64,
@@ -51,7 +48,6 @@ pub struct ConfigEdit {
     pub state_path: Option<String>,
 }
 
-#[allow(dead_code)]
 pub fn apply(path: &str, edit: &ConfigEdit) -> Result<Config, SaveError> {
     for (name, present) in [
         ("state_path", edit.state_path.is_some()),
@@ -120,7 +116,6 @@ pub fn apply(path: &str, edit: &ConfigEdit) -> Result<Config, SaveError> {
     Ok(cfg)
 }
 
-#[allow(dead_code)]
 fn classify(e: &std::io::Error, ctx: &str) -> SaveError {
     match e.kind() {
         std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem => {
@@ -130,7 +125,6 @@ fn classify(e: &std::io::Error, ctx: &str) -> SaveError {
     }
 }
 
-#[allow(dead_code)]
 fn string_array(items: &[String]) -> toml_edit::Item {
     let mut arr = toml_edit::Array::new();
     for i in items {
@@ -139,7 +133,6 @@ fn string_array(items: &[String]) -> toml_edit::Item {
     toml_edit::Item::Value(toml_edit::Value::Array(arr))
 }
 
-#[allow(dead_code)]
 fn encryption_str(e: Encryption) -> &'static str {
     match e {
         Encryption::StartTls => "starttls",
