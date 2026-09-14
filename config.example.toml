@@ -35,3 +35,24 @@ encryption = "starttls"
 username = "postmaster@example.com"
 # Prefer setting the password via SMTP_PASSWORD env var instead of here.
 password = "changeme"
+
+# ---------------------------------------------------------------------------
+# Web UI (optional). Serves a small status/config page from the daemon.
+# Access is gated by EXACTLY ONE of three modes:
+#   1. Admin token  -> set admin_token below (or the ADMIN_TOKEN env var).
+#   2. Trusted proxy header -> set trust_proxy_auth = true (reverse proxy must
+#      set Remote-User; only do this when the UI port is not directly reachable).
+#   3. Open (no token, no proxy trust) -> anyone who can reach the port may edit
+#      this config. Only acceptable on a trusted network.
+# Setting BOTH a token and trust_proxy_auth = true is a startup error.
+#
+# bind_addr and port are NOT editable from the UI and require a restart.
+# The shipped docker-compose.yml sets bind_addr = "0.0.0.0" because the
+#   container's loopback is not reachable from the host.
+[ui]
+bind_addr = "127.0.0.1"
+port = 8080
+# Prefer supplying the token via the ADMIN_TOKEN environment variable so it is
+# not stored in this file. Leave empty to disable token login.
+admin_token = ""
+trust_proxy_auth = false
