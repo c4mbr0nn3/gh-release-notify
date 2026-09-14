@@ -1,1 +1,154 @@
-<!doctype html><title>gh-release-notify</title>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>gh-release-notify</title>
+  <link rel="stylesheet" href="/pico.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="ui-main">
+
+    <header>
+      <hgroup>
+        <h1>gh-release-notify</h1>
+        <p>GitHub release watch daemon &mdash; email notifications on new stable releases.</p>
+      </hgroup>
+      <p>
+        <button id="logout-btn" hidden>Logout</button>
+      </p>
+    </header>
+
+    <section id="login-section" hidden aria-labelledby="login-heading">
+      <h2 id="login-heading">Sign in</h2>
+      <form id="login-form">
+        <label for="login-token">Admin token</label>
+        <input type="password" id="login-token" name="admin_token"
+               autocomplete="current-password" placeholder="Admin token"
+               aria-describedby="login-error" required>
+        <small id="login-hint">The admin token from config.toml or the ADMIN_TOKEN environment variable.</small>
+        <button type="submit">Sign in</button>
+        <output id="login-error" for="login-token" aria-live="polite"></output>
+      </form>
+    </section>
+
+    <section id="dashboard" hidden aria-labelledby="dashboard-heading">
+      <h2 id="dashboard-heading">Status</h2>
+      <table>
+        <caption>Watched repositories</caption>
+        <thead>
+          <tr>
+            <th scope="col">Repository</th>
+            <th scope="col">Last seen release</th>
+          </tr>
+        </thead>
+        <tbody id="status-repos-body">
+        </tbody>
+      </table>
+      <p><strong>Last poll:</strong> <span id="status-last-poll">never</span><br>
+         <strong>Next poll:</strong> <span id="status-next-poll">unknown</span></p>
+    </section>
+
+    <section id="settings-section" hidden aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Settings</h2>
+
+      <p id="readonly-banner" role="alert" hidden>
+        The configuration file is not writable. Saving is disabled.
+      </p>
+
+      <form id="settings-form">
+        <fieldset>
+          <legend>Polling</legend>
+
+          <label for="poll-interval">Poll interval (seconds)</label>
+          <input type="number" id="poll-interval" name="poll_interval_seconds" min="60" step="1">
+
+          <label for="cron-expression">Cron expression</label>
+          <input type="text" id="cron-expression" name="cron_expression"
+                 placeholder="0 */6 * * *" aria-describedby="cron-hint">
+          <small id="cron-hint">Optional. A 5-field UTC cron expression (day of week: 1=Sunday&ndash;7=Saturday).
+            When set, it overrides the poll interval.</small>
+        </fieldset>
+
+        <fieldset>
+          <legend>Email</legend>
+
+          <label for="sender">Sender address</label>
+          <input type="email" id="sender" name="sender" placeholder="bot@homelab.local">
+
+          <label>Recipients</label>
+          <div id="recipients-list"></div>
+          <p><button type="button" id="add-recipient">Add recipient</button></p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Repositories</legend>
+
+          <div id="repos-list"></div>
+          <p><button type="button" id="add-repo">Add repository</button></p>
+        </fieldset>
+
+        <fieldset>
+          <legend>SMTP</legend>
+
+          <label for="smtp-host">Host</label>
+          <input type="text" id="smtp-host" name="smtp_host" placeholder="smtp.example.com">
+
+          <label for="smtp-port">Port</label>
+          <input type="number" id="smtp-port" name="smtp_port" min="1" max="65535" step="1">
+
+          <label for="smtp-encryption">Encryption</label>
+          <select id="smtp-encryption" name="smtp_encryption">
+            <option value="starttls">STARTTLS (plain connection, upgraded to TLS)</option>
+            <option value="tls">TLS (implicit TLS)</option>
+            <option value="none">None (plain text)</option>
+          </select>
+
+          <label for="smtp-username">Username</label>
+          <input type="text" id="smtp-username" name="smtp_username" placeholder="postmaster">
+
+          <label for="smtp-password">Password</label>
+          <input type="password" id="smtp-password" name="smtp_password"
+                 autocomplete="new-password" placeholder="unchanged"
+                 aria-describedby="smtp-password-note">
+          <small id="smtp-password-note">Leave empty to keep the existing password.</small>
+
+          <label for="admin-token">New admin token</label>
+          <input type="password" id="admin-token" name="admin_token"
+                 autocomplete="new-password" placeholder="unchanged"
+                 aria-describedby="admin-token-note">
+          <small id="admin-token-note">Leave empty to keep the current token.
+            Enter a new value to change it, or tick the box to clear it and disable login.</small>
+          <label for="admin-token-clear">
+            <input type="checkbox" id="admin-token-clear" role="switch">
+            Clear admin token (disables login)
+          </label>
+          <small id="github-token-note" hidden>
+            A GitHub token is provided through the environment (GITHUB_TOKEN).
+          </small>
+        </fieldset>
+
+        <output id="settings-message" aria-live="polite"></output>
+        <p>
+          <button type="submit" id="save-btn">Save</button>
+        </p>
+      </form>
+    </section>
+
+    <section id="readonly-section" hidden aria-labelledby="readonly-heading">
+      <h2 id="readonly-heading">Read-only values</h2>
+      <p><strong>State file path:</strong> <code id="readonly-state-path">unknown</code> <em>(set in config, restart required to change)</em></p>
+      <p><strong>UI bind address:</strong> <code id="readonly-bind-addr">unknown</code> <em>(restart required)</em></p>
+      <p><strong>UI port:</strong> <code id="readonly-ui-port">unknown</code> <em>(restart required)</em></p>
+    </section>
+
+    <footer>
+      <small>gh-release-notify &mdash; <a href="/healthz">health endpoint</a></small>
+    </footer>
+
+  </main>
+</body>
+</html>
