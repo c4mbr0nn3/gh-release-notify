@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use cron::Schedule;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::str::FromStr;
 
@@ -16,6 +16,8 @@ pub struct Config {
     pub cron_expression: Option<String>,
     #[serde(skip)]
     pub cron_schedule: Option<Schedule>,
+    #[serde(skip)]
+    pub config_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -27,7 +29,7 @@ pub struct SmtpConfig {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Encryption {
     StartTls,
@@ -41,6 +43,7 @@ impl Config {
             .map_err(|e| anyhow!("failed to read config file {path}: {e}"))?;
         let mut cfg: Config =
             toml::from_str(&raw).map_err(|e| anyhow!("failed to parse config file {path}: {e}"))?;
+        cfg.config_path = path.to_string();
         cfg.validate()?;
         Ok(cfg)
     }
@@ -154,6 +157,14 @@ password = "secret"
         assert_eq!(cfg.smtp.encryption, Encryption::StartTls);
         assert_eq!(cfg.smtp.username, "postmaster");
         assert_eq!(cfg.smtp.password, "secret");
+    }
+
+    #[test]
+    fn load_records_config_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.config_path, p.to_str().unwrap());
     }
 
     fn with_cron(base: &str, cron_line: &str) -> String {
