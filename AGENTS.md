@@ -66,20 +66,15 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 - Optional `cron_expression` in config: standard 5-field cron expression (UTC) that takes precedence over `poll_interval_seconds` when present. Auto-prepends seconds field for the `cron` crate. Day-of-week: 1=Sunday .. 7=Saturday.
 - `[ui]` section (optional): `bind_addr` (default `127.0.0.1`), `port`
   (default `8080`), `admin_token` (default empty = no login),
-  `trust_proxy_auth` (default false). `bind_addr`/`port` are read-only in
-  the UI.
+  `trust_proxy_auth` (default false).
 - `ADMIN_TOKEN` env var overrides `[ui].admin_token`. Leaving both unset
   means the UI runs with no login (open mode).
-- Web UI deps: `axum`, `subtle` (constant-time compare), `getrandom`
-  (session entropy), `toml_edit` (comment-preserving config writes);
-  dev-dep `tower` (`ServiceExt::oneshot` for router tests).
 
 ## Web UI
 
-An axum 0.8 server embedded in the daemon. The page is a single
-`src/ui/index.html` with vanilla JS (`src/ui/app.js`) and vendored Pico CSS
-2.1.1, all included with `include_str!` via `src/ui/assets.rs` — no JS build
-step, no npm, no separate frontend artifact.
+An axum 0.8 server embedded in the daemon: a single `src/ui/index.html` with
+vanilla JS (`src/ui/app.js`) and vendored Pico CSS 2.1.1, all pulled in with
+`include_str!` via `src/ui/assets.rs`. No JS build step and no npm.
 
 Invariants:
 
@@ -87,24 +82,20 @@ Invariants:
   `Authorization: Bearer`), **proxy** (`Remote-User` header, spoofable if the
   port is directly reachable), or **open**. `admin_token` and
   `trust_proxy_auth = true` together is a **startup error**.
-- No secret value is ever returned by any endpoint or written to a log.
-  `GET /api/config` exposes only `admin_token_set: bool` and `env_managed`
-  flags, never values.
+- Endpoints report secret *presence* as flags (`admin_token_set: bool`,
+  `env_managed`), so no secret value reaches a response or a log line.
 - Mutations (`PUT /api/config`, `POST /api/logout`) require
   `X-Requested-With: gh-release-notify` (CSRF defense with `SameSite=Strict`).
-- `bind_addr` and `port` are file/env-only, never UI-editable.
+- `bind_addr` and `port` are file/env-only; the UI cannot change them.
 - Config writes go through `config_writeback::apply`: `toml_edit` mutation,
   re-parse and `validate()` on the rendered bytes, then atomic tmp+rename.
-  Validation failure never touches the target file.
-- The UI's only filesystem write target is the config path. It never writes
-  `state_path`.
+  A validation failure leaves the target file untouched.
+- The UI writes **only** the config path; `StateStore` ownership stays with
+  the scheduler and `src/state.rs` is untouched by UI work.
 - Runtime reload is `tokio::sync::watch<Arc<Config>>`: the scheduler re-reads
   each tick and re-arms its sleep on `config_rx.changed()`. Status flows the
-  other way on `watch<Arc<StatusSnapshot>>`; `StateStore` ownership is
-  unchanged and `src/state.rs` is not modified by UI work.
-- Session ids come from `getrandom::fill`, never `rand`.
-- **Post-implementation review pending:** this section should be revisited with
-  the `writing-for-agents` skill now that the implementation has landed.
+  other way on `watch<Arc<StatusSnapshot>>`.
+- Session ids come from `getrandom::fill`.
 
 ## Releases
 
