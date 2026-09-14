@@ -8,10 +8,11 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{middleware, Router};
+use serde_json::json;
 use tokio::sync::watch;
 use tracing::info;
 
@@ -69,23 +70,84 @@ pub async fn serve(state: AppState, shutdown: watch::Receiver<bool>) -> Result<(
 }
 
 async fn serve_index() -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        assets::INDEX_HTML,
+    )
+        .into_response()
 }
 
 async fn serve_js() -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        assets::APP_JS,
+    )
+        .into_response()
 }
 
 async fn serve_css() -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        assets::PICO_CSS,
+    )
+        .into_response()
 }
 
-async fn healthz(State(_state): State<AppState>) -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+async fn healthz(State(state): State<AppState>) -> Response {
+    let status = state.status_rx.borrow().clone();
+    axum::Json(json!({
+        "status": "ok",
+        "uptime_seconds": state.started_at.elapsed().as_secs(),
+        "next_poll_at": status.next_poll_at,
+    }))
+    .into_response()
 }
 
-async fn login() -> Response {
-    StatusCode::NOT_IMPLEMENTED.into_response()
+#[derive(serde::Deserialize)]
+struct LoginBody {
+    admin_token: String,
+}
+
+async fn login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<LoginBody>,
+) -> Response {
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .unwrap_or("unknown")
+        .trim()
+        .to_string();
+
+    if !state.limiter.allow(&ip) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(json!({"error": "too many attempts"})),
+        )
+            .into_response();
+    }
+
+    let cfg = state.config_rx.borrow().clone();
+    let expected = cfg.admin_token();
+    if expected.is_empty() || !auth::constant_time_eq(&body.admin_token, &expected) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(json!({"error": "unauthorized"})),
+        )
+            .into_response();
+    }
+
+    state.limiter.reset(&ip);
+    let session = state.sessions.create();
+    let secure = auth::is_https(&headers);
+    (
+        StatusCode::OK,
+        [(header::SET_COOKIE, auth::cookie_header(&session, secure))],
+        axum::Json(json!({"ok": true})),
+    )
+        .into_response()
 }
 
 async fn get_config(State(_state): State<AppState>) -> Response {
@@ -222,6 +284,15 @@ trust_proxy_auth = {proxy}
             StatusCode::UNAUTHORIZED,
             "/login must be public"
         );
+    }
+
+    #[tokio::test]
+    async fn index_and_healthz_return_200() {
+        let app = token_app("secret").await;
+        let resp = app.clone().oneshot(req("/")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp = app.oneshot(req("/healthz")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]

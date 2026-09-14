@@ -23,7 +23,6 @@ pub struct Sessions {
 }
 
 impl Sessions {
-    #[allow(dead_code)]
     pub fn create(&self) -> String {
         let mut buf = [0u8; 32];
         if getrandom::fill(&mut buf).is_err() {
@@ -66,7 +65,6 @@ pub struct LoginLimiter {
 }
 
 impl LoginLimiter {
-    #[allow(dead_code)]
     pub fn allow(&self, ip: &str) -> bool {
         let Ok(mut m) = self.attempts.lock() else {
             return false;
@@ -81,7 +79,6 @@ impl LoginLimiter {
         entry.0 <= LOGIN_LIMIT_PER_MINUTE
     }
 
-    #[allow(dead_code)]
     pub fn reset(&self, ip: &str) {
         if let Ok(mut m) = self.attempts.lock() {
             m.remove(ip);
@@ -151,7 +148,6 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     next.run(req).await
 }
 
-#[allow(dead_code)]
 pub fn cookie_header(session: &str, secure: bool) -> String {
     let mut c = format!(
         "grn_session={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age={}",
@@ -168,7 +164,6 @@ pub fn clear_cookie_header() -> String {
     "grn_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0".to_string()
 }
 
-#[allow(dead_code)]
 pub fn is_https(headers: &HeaderMap) -> bool {
     headers
         .get("x-forwarded-proto")
