@@ -285,4 +285,24 @@ password = "secret"
             .unwrap()
             .contains("evil.json"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_path_returns_unwritable_not_panic() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(dir.path(), sample_config());
+        let edit = edit_from(&path);
+        let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
+        perms.set_mode(0o555);
+        std::fs::set_permissions(dir.path(), perms).unwrap();
+        let result = apply(&path, &edit);
+        let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(dir.path(), perms).unwrap();
+        assert!(
+            matches!(result, Err(SaveError::Unwritable(_))),
+            "got {result:?}"
+        );
+    }
 }
