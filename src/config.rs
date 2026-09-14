@@ -18,6 +18,8 @@ pub struct Config {
     pub cron_schedule: Option<Schedule>,
     #[serde(skip)]
     pub config_path: String,
+    #[serde(default)]
+    pub ui: UiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -37,6 +39,45 @@ pub enum Encryption {
     None,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UiConfig {
+    #[serde(default = "default_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default = "default_ui_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub admin_token: String,
+    #[serde(default)]
+    pub trust_proxy_auth: bool,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            bind_addr: default_bind_addr(),
+            port: default_ui_port(),
+            admin_token: String::new(),
+            trust_proxy_auth: false,
+        }
+    }
+}
+
+fn default_bind_addr() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_ui_port() -> u16 {
+    8080
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMode {
+    Token,
+    Proxy,
+    Open,
+}
+
 impl Config {
     pub fn load(path: &str) -> Result<Config> {
         let raw = std::fs::read_to_string(path)
@@ -50,6 +91,24 @@ impl Config {
 
     pub fn smtp_password(&self) -> String {
         env::var("SMTP_PASSWORD").unwrap_or_else(|_| self.smtp.password.clone())
+    }
+
+    pub fn admin_token(&self) -> String {
+        match env::var("ADMIN_TOKEN") {
+            Ok(v) if !v.is_empty() => v,
+            _ => self.ui.admin_token.clone(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn ui_auth_mode(&self) -> AuthMode {
+        if !self.admin_token().is_empty() {
+            AuthMode::Token
+        } else if self.ui.trust_proxy_auth {
+            AuthMode::Proxy
+        } else {
+            AuthMode::Open
+        }
     }
 
     pub fn github_token(&self) -> Option<String> {
@@ -108,6 +167,21 @@ impl Config {
                 .map_err(|e| anyhow!("invalid cron_expression '{expr}': {e}"))?;
             self.cron_schedule = Some(schedule);
         }
+        if self.ui.port == 0 {
+            bail!("ui.port must be > 0");
+        }
+        if self.ui.bind_addr.parse::<std::net::IpAddr>().is_err() {
+            bail!(
+                "ui.bind_addr '{}' is not a valid IP address",
+                self.ui.bind_addr
+            );
+        }
+        if !self.admin_token().is_empty() && self.ui.trust_proxy_auth {
+            bail!(
+                "ui.admin_token and ui.trust_proxy_auth are mutually exclusive; \
+                 configure exactly one auth mode"
+            );
+        }
         Ok(())
     }
 }
@@ -157,6 +231,57 @@ password = "secret"
         assert_eq!(cfg.smtp.encryption, Encryption::StartTls);
         assert_eq!(cfg.smtp.username, "postmaster");
         assert_eq!(cfg.smtp.password, "secret");
+    }
+
+    #[test]
+    fn parses_ui_section_with_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.ui.bind_addr, "127.0.0.1");
+        assert_eq!(cfg.ui.port, 8080);
+        assert!(cfg.ui.admin_token.is_empty());
+        assert!(!cfg.ui.trust_proxy_auth);
+    }
+
+    #[test]
+    fn rejects_token_and_proxy_auth_together() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("ADMIN_TOKEN");
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nadmin_token = \"tok\"\ntrust_proxy_auth = true\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn rejects_ui_port_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nport = 0\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("port"));
+    }
+
+    #[test]
+    fn rejects_unparseable_bind_addr() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nbind_addr = \"not-an-ip\"\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("bind_addr"));
+    }
+
+    #[test]
+    fn admin_token_env_overrides_config() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        env::set_var("ADMIN_TOKEN", "from-env");
+        assert_eq!(cfg.admin_token(), "from-env");
+        env::remove_var("ADMIN_TOKEN");
     }
 
     #[test]
