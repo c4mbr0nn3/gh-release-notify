@@ -116,6 +116,17 @@ impl Config {
         }
     }
 
+    pub fn apply_state_path_override(&mut self, state_path: Option<&str>) -> Result<()> {
+        match state_path {
+            Some(p) if p.trim().is_empty() => bail!("state path override must not be empty"),
+            Some(p) => {
+                self.state_path = p.to_string();
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
+
     pub fn validate(&mut self) -> Result<()> {
         if self.poll_interval_seconds < 60 {
             bail!("poll_interval_seconds must be >= 60");
@@ -286,6 +297,34 @@ password = "secret"
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
         assert_eq!(cfg.config_path, p.to_str().unwrap());
+    }
+
+    #[test]
+    fn state_path_override_replaces_config_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        cfg.apply_state_path_override(Some("./local-state.json"))
+            .unwrap();
+        assert_eq!(cfg.state_path, "./local-state.json");
+    }
+
+    #[test]
+    fn state_path_override_absent_keeps_config_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        cfg.apply_state_path_override(None).unwrap();
+        assert_eq!(cfg.state_path, "./state.json");
+    }
+
+    #[test]
+    fn state_path_override_rejects_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        let err = cfg.apply_state_path_override(Some("")).unwrap_err();
+        assert!(err.to_string().contains("must not be empty"));
     }
 
     fn with_cron(base: &str, cron_line: &str) -> String {

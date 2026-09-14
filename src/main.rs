@@ -22,6 +22,8 @@ use tracing_subscriber::EnvFilter;
 struct Args {
     #[arg(long, env = "CONFIG_PATH", default_value = "./config.toml")]
     config: String,
+    #[arg(long, env = "STATE_PATH")]
+    state_path: Option<String>,
 }
 
 #[tokio::main]
@@ -35,13 +37,18 @@ async fn main() {
     let args = Args::parse();
     info!("loading config from {}", args.config);
 
-    let cfg = match config::Config::load(&args.config) {
+    let mut cfg = match config::Config::load(&args.config) {
         Ok(c) => c,
         Err(e) => {
             error!("invalid config: {e}");
             std::process::exit(1);
         }
     };
+
+    if let Err(e) = cfg.apply_state_path_override(args.state_path.as_deref()) {
+        error!("invalid state path override: {e}");
+        std::process::exit(1);
+    }
 
     if cfg.cron_schedule.is_some() {
         info!(

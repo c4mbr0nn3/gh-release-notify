@@ -62,6 +62,7 @@ For release/deploy checks also run `cargo build --release`. Container tooling is
 
 - Config file: TOML, path via `--config` CLI arg or `CONFIG_PATH` env, default `./config.toml`.
 - Env overrides: `SMTP_PASSWORD` overrides `[smtp].password`; `GITHUB_TOKEN` (if set and non-empty) used for bearer auth; `RUST_LOG` controls tracing filter (default `info`).
+- State file path: `state_path` in the config, overridable at runtime via `--state-path` CLI arg or `STATE_PATH` env (empty override is a startup error). The override is not written back to the config file.
 - For Docker/compose deployment `state_path` must be `/state/state.json` (the mounted volume), not `./state.json`.
 - Optional `cron_expression` in config: standard 5-field cron expression (UTC) that takes precedence over `poll_interval_seconds` when present. Auto-prepends seconds field for the `cron` crate. Day-of-week: 1=Sunday .. 7=Saturday.
 - `[ui]` section (optional): `bind_addr` (default `127.0.0.1`), `port`

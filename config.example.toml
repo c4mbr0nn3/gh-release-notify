@@ -16,6 +16,8 @@ poll_interval_seconds = 3600
 # Path to the state file (last-seen tags).
 # For Docker/compose deployment use /state/state.json (the mounted volume).
 # For local runs use ./state.json.
+# Can be overridden at runtime with --state-path or the STATE_PATH env var,
+# which leaves this file untouched.
 state_path = "/state/state.json"
 
 # Email "From" address for notifications.

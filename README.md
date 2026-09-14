@@ -45,6 +45,7 @@ password = "changeme"                # prefer SMTP_PASSWORD env var instead
 | Variable        | Purpose                                                          | Default        |
 |-----------------|------------------------------------------------------------------|----------------|
 | `CONFIG_PATH`   | Path to the config file (also settable via `--config` CLI arg).  | `./config.toml`|
+| `STATE_PATH`    | Overrides `state_path` from the config file (also settable via `--state-path` CLI arg). | (config value) |
 | `GITHUB_TOKEN`  | Optional GitHub PAT. If set, sent as `Authorization: Bearer`.   | (unset)        |
 | `SMTP_PASSWORD` | Overrides `[smtp].password`. Keeps the secret out of the file.  | (unset)        |
 | `ADMIN_TOKEN`   | Admin token for the web UI login. Alternative to `[ui].admin_token`. | (unset)        |
@@ -67,6 +68,16 @@ ADMIN_TOKEN=your-admin-token
 ```bash
 cargo run --release -- --config ./config.toml
 ```
+
+The shipped `config.example.toml` sets `state_path = "/state/state.json"`, which only exists inside the container. For a local run, either change `state_path` to `./state.json` in your config, or override it without editing the file:
+
+```bash
+cargo run --release -- --config ./config.toml --state-path ./state.json
+# or:
+STATE_PATH=./state.json cargo run --release -- --config ./config.toml
+```
+
+The override is runtime-only and never rewrites the config file, so the Docker value stays intact. State-saving failures (`No such file or directory`) mean the `state_path` parent directory does not exist.
 
 For a quick smoke test set `poll_interval_seconds = 120` in the config and watch the logs.
 
