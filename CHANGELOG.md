@@ -111,52 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump semver-compatible dependency lockfile updates
 
 
-## [Unreleased]
-### Bug Fixes
-
-- Test invalid cron expression via parser error path
-
-### Build
-
-- Add cron 0.17 dependency
-
-- Bump reqwest to 0.13 and toml to 1
-
-### Documentation
-
-- Reference release-workflow spec and plan in AGENTS.md and README
-
-- Design spec for cron schedule support
-
-- Implementation plan for cron schedule support
-
-- Document cron_expression in config example
-
-- Document cron_expression in README
-
-- Document cron_expression in AGENTS.md
-
-- Add local release workflow spec and plan
-
-### Features
-
-- Add cron_expression and cron_schedule config fields
-
-- Validate and parse cron_expression in config
-
-- Add cron scheduling branch to scheduler
-
-- Log cron schedule or poll interval at startup
-
-### Miscellaneous Tasks
-
-- Update deps
-
-- Remove opencode config
-
-- Bump semver-compatible dependency lockfile updates
-
-
 ## [1.0.2] - 2026-07-08
 ### Bug Fixes
 
@@ -164,19 +118,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable consolidate-commits so version placeholder expands
 
-### Miscellaneous Tasks
-
-- Release v1.0.2
-
 
 ## [1.0.1] - 2026-07-08
 ### Continuous Integration
 
 - Merge release and image workflows into single atomic workflow
-
-### Miscellaneous Tasks
-
-- Release v{{version}}
 
 
 ## [1.0.0] - 2026-07-05
@@ -257,8 +203,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add cargo-generated gitignore entries
 
 - Add cargo-release config
-
-- Release v{{version}}
 
 ### Refactor
 
