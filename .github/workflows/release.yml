@@ -179,9 +179,11 @@ jobs:
       - name: Install git-cliff
         run: cargo install git-cliff --locked --version 2.14.1
 
-      # 9. Render release body from cliff.toml
+      # 9. Render release body from cliff.toml. The tag is already on HEAD
+      #    (cargo-release tagged it locally), so --unreleased resolves to an
+      #    empty range; --current renders the section for the HEAD tag.
       - name: Generate changelog
-        run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" --strip all > release-body.md
+        run: git cliff --current --strip all > release-body.md
 
       # 10. Create GitHub Release with the git-cliff body
       - name: Create GitHub Release
