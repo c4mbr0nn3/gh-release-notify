@@ -19,7 +19,7 @@ pub fn build_body(release: &Release, repo: &str) -> String {
          {body}\n",
         repo = repo,
         tag = release.tag_name,
-        name = release.name,
+        name = release.name.as_deref().unwrap_or(&release.tag_name),
         published = release.published_at.format("%Y-%m-%d %H:%M UTC"),
         url = release.html_url,
         body = release.body,
@@ -102,7 +102,7 @@ mod tests {
     fn sample_release() -> Release {
         Release {
             tag_name: "1.19.4".to_string(),
-            name: "1.19.4".to_string(),
+            name: Some("1.19.4".to_string()),
             html_url: "https://github.com/fosrl/pangolin/releases/tag/1.19.4".to_string(),
             body: "Fix newly created clients from logging in on a new device.".to_string(),
             published_at: chrono::Utc
@@ -120,5 +120,14 @@ mod tests {
         assert!(body.contains("https://github.com/fosrl/pangolin/releases/tag/1.19.4"));
         assert!(body.contains("Fix newly created clients"));
         assert!(body.contains("2026-06-26 14:29 UTC"));
+    }
+
+    #[test]
+    fn body_falls_back_to_tag_when_name_is_null() {
+        let mut r = sample_release();
+        r.name = None;
+        let body = build_body(&r, "vrana/adminer");
+        assert!(body.contains("Tag: 1.19.4"));
+        assert!(body.contains("Name: 1.19.4"));
     }
 }

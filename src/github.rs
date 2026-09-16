@@ -31,11 +31,20 @@ impl From<anyhow::Error> for GithubError {
 #[derive(Debug, Deserialize)]
 pub struct Release {
     pub tag_name: String,
-    pub name: String,
-    pub html_url: String,
     #[serde(default)]
+    pub name: Option<String>,
+    pub html_url: String,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub body: String,
     pub published_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn null_to_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 pub struct GithubClient {
@@ -114,7 +123,7 @@ mod tests {
         }"#;
         let r: Release = serde_json::from_str(raw).unwrap();
         assert_eq!(r.tag_name, "1.19.4");
-        assert_eq!(r.name, "1.19.4");
+        assert_eq!(r.name.as_deref(), Some("1.19.4"));
         assert_eq!(
             r.html_url,
             "https://github.com/fosrl/pangolin/releases/tag/1.19.4"
@@ -132,6 +141,34 @@ mod tests {
             "published_at": "2026-01-01T00:00:00Z"
         }"#;
         let r: Release = serde_json::from_str(raw).unwrap();
+        assert_eq!(r.body, "");
+    }
+
+    #[test]
+    fn parses_release_with_null_name() {
+        let raw = r#"{
+            "tag_name": "v6.1.0",
+            "name": null,
+            "html_url": "https://github.com/vrana/adminer/releases/tag/v6.1.0",
+            "body": "- The driver is no longer beta",
+            "published_at": "2026-09-14T14:15:24Z"
+        }"#;
+        let r: Release = serde_json::from_str(raw).unwrap();
+        assert_eq!(r.tag_name, "v6.1.0");
+        assert_eq!(r.name, None);
+    }
+
+    #[test]
+    fn parses_release_with_null_body() {
+        let raw = r#"{
+            "tag_name": "1.0.0",
+            "name": "1.0.0",
+            "html_url": "https://example.com",
+            "body": null,
+            "published_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let r: Release = serde_json::from_str(raw).unwrap();
+        assert_eq!(r.name.as_deref(), Some("1.0.0"));
         assert_eq!(r.body, "");
     }
 }
