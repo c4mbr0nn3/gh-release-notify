@@ -1,258 +1,123 @@
 # gh-release-notify
 
-A long-running Rust daemon that polls a configurable list of GitHub repos for new **stable** releases and sends plain-text email notifications via SMTP when one appears. Built for homelab use; ships as a Docker/podman container.
+[![latest release](https://img.shields.io/github/v/release/c4mbr0nn3/gh-release-notify)](https://github.com/c4mbr0nn3/gh-release-notify/releases)
+[![license](https://img.shields.io/github/license/c4mbr0nn3/gh-release-notify)](LICENSE)
+[![rust](https://img.shields.io/badge/rust-1.98.1-orange)](Cargo.toml)
+[![container](https://img.shields.io/badge/ghcr.io-gh--release--notify-blue)](https://github.com/c4mbr0nn3/gh-release-notify/pkgs/container/gh-release-notify)
+
+A long-running Rust daemon that watches GitHub repos for new **stable** releases
+and emails you when one appears. Ships as a Docker/podman container with an
+embedded web UI for status and configuration.
+
+![gh-release-notify status and settings page](docs/assets/ui-status.png)
+
+[Quick start](#quick-start) · [Configuration](docs/configuration.md) · [Web UI & auth](docs/web-ui.md) · [Operations](docs/operations.md) · [Releases](docs/releases.md) · [Contributing](CONTRIBUTING.md)
+
+## Quick start
+
+```bash
+git clone https://github.com/c4mbr0nn3/gh-release-notify.git
+cd gh-release-notify
+mkdir -p config state
+cp config.example.toml config/config.toml
+cp .env.example .env
+# Edit config/config.toml (repos, recipients, SMTP) and .env (ADMIN_TOKEN,
+# SMTP_PASSWORD) now, before the chown makes them container-owned.
+sudo chown -R 10001:10001 config state      # the container runs as uid 10001
+docker compose up -d
+```
+
+Open <http://127.0.0.1:8080>. With podman, replace the last command with
+`podman compose up -d`. The first poll records each repo's current tag without
+emailing, so a fresh deployment does not notify you about releases you already
+have.
+
+> [!WARNING]
+> The UI can rewrite the config file, including the SMTP password. Set
+> `ADMIN_TOKEN` (or `ui.trust_proxy_auth` behind a trusted proxy) before
+> exposing the port.
 
 ## What it does
 
-- Polls `GET /repos/{owner}/{repo}/releases/latest` for each configured repo on a configurable schedule: a fixed interval (default 1h) or an optional cron expression for precise timing control.
-- Compares the latest stable tag to the last-seen tag stored in a JSON state file.
-- On a new release, sends a plain-text email (repo, tag, name, published date, URL, release notes) to a configurable recipient list via SMTP.
-- On first run for a repo with no stored tag, records the current latest tag **without** emailing (so deploying the service doesn't spam you about the current release).
-- On SMTP failure, leaves state untouched so the email retries next tick.
-- Optional GitHub token for higher API rate limits (60 req/hour/IP unauthenticated, 5000 req/hour with token).
-- Graceful shutdown on SIGINT/SIGTERM.
+- Polls `GET /repos/{owner}/{repo}/releases/latest` on a fixed interval or a
+  UTC cron schedule.
+- Compares the latest stable tag to the last-seen tag in a JSON state file.
+- Sends repo, tag, name, published date, URL, and release notes as plain text.
+- Keeps state untouched on SMTP failure, so the email retries next tick.
+- Records the current tag on first run without emailing.
+- Shows live status and edits the config through the embedded web UI.
 
-## Configure
+## Configuration
 
-Copy the sample config and edit:
-
-```bash
-cp config.example.toml config.toml
-```
+Minimal `config/config.toml`:
 
 ```toml
 poll_interval_seconds = 3600
-state_path = "/state/state.json"   # /state/state.json for Docker, ./state.json for local runs
+state_path = "/state/state.json"
 sender = "gh-release-notify@homelab.local"
-# sender_name = "gh-release-notify"  # optional; display name shown in email clients
 repos = ["fosrl/pangolin", "fosrl/newt"]
 recipients = ["you@example.com"]
-
-# Optional: cron expression (takes precedence over poll_interval_seconds).
-# Standard 5-field: minute hour day-of-month month day-of-week.
-# Timezone is UTC. Day-of-week: 1=Sunday .. 7=Saturday.
-# cron_expression = "0 */6 * * *"
+# cron_expression = "0 */6 * * *"          # optional; overrides the interval
 
 [smtp]
 host = "smtp.example.com"
 port = 587
-encryption = "starttls"            # "starttls" (587) | "tls" (465) | "none" (25)
+encryption = "starttls"                    # starttls | tls | none
 username = "postmaster@example.com"
-password = "changeme"                # prefer SMTP_PASSWORD env var instead
+password = "changeme"                      # prefer SMTP_PASSWORD
+
+[ui]
+admin_token = ""                           # prefer ADMIN_TOKEN
+trust_proxy_auth = false
 ```
 
-### Environment variables
+`poll_interval_seconds` is required and must be at least 60. See
+[Configuration](docs/configuration.md) for every key, the environment-variable
+table, and cron syntax.
 
-| Variable        | Purpose                                                          | Default        |
-|-----------------|------------------------------------------------------------------|----------------|
-| `CONFIG_PATH`   | Path to the config file (also settable via `--config` CLI arg).  | `./config.toml`|
-| `GITHUB_TOKEN`  | Optional GitHub PAT. If set, sent as `Authorization: Bearer`.   | (unset)        |
-| `SMTP_PASSWORD` | Overrides `[smtp].password`. Keeps the secret out of the file.  | (unset)        |
-| `RUST_LOG`      | tracing filter directive (`info`, `debug`, `gh_release_notify=debug`). | `info`    |
+## Web UI and auth
 
-Copy `.env.example` to `.env` and fill in secrets:
+The UI listens on `127.0.0.1:8080` by default. Exactly one auth mode is active:
 
-```bash
-cp .env.example .env
-```
+| Mode | Setup | Notes |
+|---|---|---|
+| Token | `ADMIN_TOKEN` or `[ui].admin_token` | Login form; 12-hour session cookie |
+| Proxy | `[ui].trust_proxy_auth = true` | Accepts `Remote-User`; spoofable if the port is directly reachable |
+| Open | neither set | Anyone who can reach the port can edit config |
 
-```
-GITHUB_TOKEN=ghp_xxx
-SMTP_PASSWORD=your-smtp-password
-```
+Setting a token and `trust_proxy_auth = true` together is a startup error.
+Config edits from the UI apply to the running scheduler without a restart.
+See [Web UI & auth](docs/web-ui.md) for reverse-proxy and read-only mount
+recipes.
 
-## Run locally
+## Operations
 
-```bash
-cargo run --release -- --config ./config.toml
-```
-
-For a quick smoke test set `poll_interval_seconds = 120` in the config and watch the logs.
-
-## Run in Docker / podman
-
-Build the image (use `docker` if available, otherwise `podman`):
-
-```bash
-docker build -t gh-release-notify:latest .
-# or, if docker is not available:
-podman build -t gh-release-notify:latest .
-```
-
-To smoke-test the image locally without touching your real config or state:
-
-```bash
-./scripts/test-container.sh
-```
-
-The script builds `gh-release-notify:test` with podman, runs it against a
-temporary config and state directory, and asserts that the daemon loads its
-config, polls, shuts down cleanly on SIGTERM, and rejects an invalid config.
-Flags: `-f|--force` (rebuild from scratch), `-n|--no-cache`, `-k|--keep`
-(keep the container for inspection), `-h|--help`. State persistence is
-checked best-effort, so the script still passes when GitHub is unreachable.
-
-Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence). Use whichever compose implementation you have available:
-
-```bash
-docker compose up -d        # docker compose plugin
-# or:
-podman compose up -d        # podman compose
-# or:
-docker-compose up -d        # standalone docker-compose
-```
-
-State persists across container restarts via the `./state` volume. On container recreation the state file survives, so you won't get a first-run notification burst for already-seen releases.
-
-**State directory permissions:** the container runs as non-root user `ghrel` (uid 10001). The mounted `./state` directory must be writable by that uid, or you'll see `Permission denied (os error 13)` on state save. Before first run:
-
-```bash
-mkdir -p ./state && sudo chown 10001:10001 ./state
-```
-
-(If you see `failed to write state tmp file ... Permission denied` in the logs, this is the fix.)
-
-## First-run behavior
-
-For each repo, the first time the service sees it (no stored tag in `state.json`) it records the current latest tag **without** sending an email. Subsequent new releases trigger an email. Delete `state.json` to reset.
-
-## Logs
-
-Structured logs via `tracing`. Default level `info`:
-
-```
-polling 2 repos
-no change for fosrl/pangolin (still 1.19.4)
-no change for fosrl/newt (still 1.13.0)
-tick complete, sleeping 3600s
-```
-
-New release:
-
-```
-new release detected for fosrl/pangolin: 1.20.0
-sent notification to 2 recipients for fosrl/pangolin 1.20.0
-state saved to /state/state.json
-```
-
-Rate-limited (403):
-
-```
-github rate-limited, skipping remaining repos this tick: github rate-limited (403) for fosrl/pangolin: ...
-rate-limited by github, skipping remaining repos this tick
-```
-
-Set `RUST_LOG=debug` for more detail.
-
-## Project layout
-
-```
-src/
-  main.rs        CLI, tracing, wire modules, signal handling
-  config.rs      Config + SmtpConfig + Encryption: parse & validate config.toml
-  github.rs      GithubClient + Release + GithubError: fetch latest stable release
-  state.rs       StateStore: JSON-backed last-seen tags (atomic save)
-  notify.rs      Mailer + build_body: plain-text email via SMTP (lettre async)
-  scheduler.rs   run(): poll loop, first-run-no-email, graceful shutdown
-config.example.toml   sample config (with comments)
-.env.example          sample env file
-Dockerfile            multi-stage build (rust:slim -> debian:trixie-slim)
-docker-compose.yml     single service, config + state volumes
-```
-
-## Develop
-
-Verification gate (run before committing):
-
-```bash
-cargo fmt
-cargo clippy -- -D warnings
-cargo test
-```
-
-Run a focused test while iterating:
-
-```bash
-cargo test config
-cargo test state
-cargo test github
-cargo test notify
-```
-
-Build the release binary:
-
-```bash
-cargo build --release
-```
+- Health: `GET /healthz` returns JSON and needs no auth.
+- Logs: structured `tracing`; set `RUST_LOG` (default `info`).
+- State: delete `state.json` to reset the first-run behavior.
+- State directory: must be writable by uid 10001 (`sudo chown 10001:10001 state`).
+- Full log examples, permissions, upgrade steps, and troubleshooting:
+  [Operations](docs/operations.md).
 
 ## Releases
 
-Releases are cut locally via `./scripts/release.sh` and pushed as a tag;
-the tag push triggers the GitHub Actions workflow that builds and
-publishes the image and the GitHub Release.
+Stable releases are cut locally with `./scripts/release.sh`; the tag push builds
+and publishes amd64 + arm64 images to `ghcr.io/c4mbr0nn3/gh-release-notify` and
+creates a GitHub Release. Release candidates use `./scripts/release-rc.sh`.
+See [Releases](docs/releases.md) for the full flow, image tags, and rules.
 
-### Cutting a release
+## Documentation
 
-1. From a clean `main`, run `./scripts/release.sh` with no flags to infer
-   the SemVer bump from conventional commits (breaking→major, feat→minor,
-   else→patch), or pass `--major`, `--minor`, or `--patch` explicitly.
-   Use `--dry-run` to preview.
-2. The script enforces the pinned tools (git-cliff 2.14.1,
-   cargo-release 1.1.5) and runs the verification gate (`cargo fmt`,
-   `cargo clippy -- -D warnings`, `cargo test`).
-3. It then bumps `Cargo.toml` and `Cargo.lock`, generates the changelog,
-   commits as `chore: release v{version}`, tags `v{version}`, and pushes
-   `main` + the tag.
-4. The tag push triggers the `release` workflow, which builds and pushes
-   a multi-arch (amd64 + arm64) Docker image to GHCR and creates a
-   GitHub Release with notes generated by git-cliff.
-
-### Cutting a release candidate
-
-```bash
-./scripts/release-rc.sh            # RC for the next derived stable version
-./scripts/release-rc.sh --base 1.3.0
-./scripts/release-rc.sh --dry-run  # preview only
-```
-
-An RC is the tag `vX.Y.Z-rc.N`. The script is **tag-only**: it never commits
-and never changes `Cargo.toml`, `Cargo.lock`, or any version file. RC tags
-never appear in `CHANGELOG.md` and never create a GitHub Release; their
-commits are folded into the next stable release section. CI publishes
-`:X.Y.Z-rc.N`, `:vX.Y.Z-rc.N`, and a moving `:rc` image tag, never `:latest`.
-When the RC is validated, cut the stable release with `./scripts/release.sh`.
-
-### Image tags
-
-The image is published to `ghcr.io/c4mbr0nn3/gh-release-notify` with
-three tag flavors for each stable release `vX.Y.Z`:
-
-- `:vX.Y.Z` — git tag verbatim. Most explicit; use for pinning.
-- `:X.Y.Z` — SemVer without the `v` prefix. For tooling that strips `v`.
-- `:latest` — points at the most recent stable release. Updated only on
-  stable tag pushes, never on `main` branch pushes or RC tags.
-
-Release candidates additionally publish `:vX.Y.Z-rc.N`, `:X.Y.Z-rc.N`, and a
-moving `:rc` tag that always points at the newest RC.
-
-### Pulling the image
-
-`docker-compose.yml` is configured to pull from GHCR by default:
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-To pin a specific release, edit `docker-compose.yml`:
-
-```yaml
-    image: ghcr.io/c4mbr0nn3/gh-release-notify:v0.1.0
-```
-
-For local development builds, use `docker compose up --build` (the
-`build: .` directive is retained as a fallback).
+| Document | Contents |
+|---|---|
+| [Configuration](docs/configuration.md) | Config keys, environment variables, cron |
+| [Web UI & auth](docs/web-ui.md) | UI sections, auth modes, reverse proxy, read-only mounts |
+| [Operations](docs/operations.md) | Logs, state, permissions, upgrade, troubleshooting |
+| [Architecture](docs/architecture.md) | Module map, data flow, runtime reload |
+| [Releases](docs/releases.md) | Stable/RC flow, workflow, image tags |
+| [Contributing](CONTRIBUTING.md) | Local build, verification gate, code rules |
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+[MIT](LICENSE). The embedded web UI vendors Pico CSS 2.1.1 (MIT); see
+[NOTICE](NOTICE).

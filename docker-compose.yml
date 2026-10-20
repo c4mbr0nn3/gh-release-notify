@@ -11,13 +11,22 @@ services:
     cpus: "0.50"
     networks:
       - gh-release-notify-net
+    # The config DIRECTORY is mounted read-write so the web UI can save edits.
+    # Mounting a single file (`./config.toml:/config/config.toml`) cannot work:
+    # the UI saves with tmp+rename, and renaming onto a bind-mounted file fails
+    # with EBUSY. Mount it `:ro` instead to make the file immutable; the UI then
+    # reports it as not writable and disables saving.
     volumes:
-      - ./config.toml:/config/config.toml:ro
+      - ./config:/config
       - ./state:/state
+    ports:
+      - "127.0.0.1:8080:8080"
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - CONFIG_PATH=/config/config.toml
+      - UI_BIND_ADDR=0.0.0.0
       - RUST_LOG=info
 
 networks:

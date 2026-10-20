@@ -1,0 +1,12 @@
+gh-release-notify
+Copyright (c) 2026 Francesco Zorzi
+Licensed under the MIT License; see LICENSE.
+
+Third-party assets
+------------------
+
+Pico CSS v2.1.1
+Copyright 2019-2025, licensed under the MIT License.
+https://picocss.com
+
+Vendored as src/ui/pico.classless.min.css.

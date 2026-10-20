@@ -1,5 +1,6 @@
 /target
 /state
+.taste-skill/
 *.toml
 !Cargo.toml
 !config.example.toml

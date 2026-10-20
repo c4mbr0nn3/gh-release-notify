@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use cron::Schedule;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::str::FromStr;
 
@@ -18,6 +18,10 @@ pub struct Config {
     pub cron_expression: Option<String>,
     #[serde(skip)]
     pub cron_schedule: Option<Schedule>,
+    #[serde(skip)]
+    pub config_path: String,
+    #[serde(default)]
+    pub ui: UiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -29,12 +33,50 @@ pub struct SmtpConfig {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Encryption {
     StartTls,
     Tls,
     None,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UiConfig {
+    #[serde(default = "default_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default = "default_ui_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub admin_token: String,
+    #[serde(default)]
+    pub trust_proxy_auth: bool,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            bind_addr: default_bind_addr(),
+            port: default_ui_port(),
+            admin_token: String::new(),
+            trust_proxy_auth: false,
+        }
+    }
+}
+
+fn default_bind_addr() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_ui_port() -> u16 {
+    8080
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMode {
+    Token,
+    Proxy,
+    Open,
 }
 
 impl Config {
@@ -43,12 +85,34 @@ impl Config {
             .map_err(|e| anyhow!("failed to read config file {path}: {e}"))?;
         let mut cfg: Config =
             toml::from_str(&raw).map_err(|e| anyhow!("failed to parse config file {path}: {e}"))?;
+        cfg.config_path = path.to_string();
+        apply_ui_env_overrides(&mut cfg)?;
         cfg.validate()?;
         Ok(cfg)
     }
 
     pub fn smtp_password(&self) -> String {
-        env::var("SMTP_PASSWORD").unwrap_or_else(|_| self.smtp.password.clone())
+        match env::var("SMTP_PASSWORD") {
+            Ok(v) if !v.is_empty() => v,
+            _ => self.smtp.password.clone(),
+        }
+    }
+
+    pub fn admin_token(&self) -> String {
+        match env::var("ADMIN_TOKEN") {
+            Ok(v) if !v.is_empty() => v,
+            _ => self.ui.admin_token.clone(),
+        }
+    }
+
+    pub fn ui_auth_mode(&self) -> AuthMode {
+        if !self.admin_token().is_empty() {
+            AuthMode::Token
+        } else if self.ui.trust_proxy_auth {
+            AuthMode::Proxy
+        } else {
+            AuthMode::Open
+        }
     }
 
     pub fn github_token(&self) -> Option<String> {
@@ -58,7 +122,18 @@ impl Config {
         }
     }
 
-    fn validate(&mut self) -> Result<()> {
+    pub fn apply_state_path_override(&mut self, state_path: Option<&str>) -> Result<()> {
+        match state_path {
+            Some(p) if p.trim().is_empty() => bail!("state path override must not be empty"),
+            Some(p) => {
+                self.state_path = p.to_string();
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
+
+    pub fn validate(&mut self) -> Result<()> {
         if self.poll_interval_seconds < 60 {
             bail!("poll_interval_seconds must be >= 60");
         }
@@ -120,17 +195,53 @@ impl Config {
                 .map_err(|e| anyhow!("invalid cron_expression '{expr}': {e}"))?;
             self.cron_schedule = Some(schedule);
         }
+        if self.ui.port == 0 {
+            bail!("ui.port must be > 0");
+        }
+        if self.ui.bind_addr.parse::<std::net::IpAddr>().is_err() {
+            bail!(
+                "ui.bind_addr '{}' is not a valid IP address",
+                self.ui.bind_addr
+            );
+        }
+        if !self.admin_token().is_empty() && self.ui.trust_proxy_auth {
+            bail!(
+                "ui.admin_token and ui.trust_proxy_auth are mutually exclusive; \
+                 configure exactly one auth mode"
+            );
+        }
         Ok(())
     }
+}
+
+pub(crate) fn apply_ui_env_overrides(cfg: &mut Config) -> Result<()> {
+    match env::var("UI_BIND_ADDR") {
+        Ok(v) if v.trim().is_empty() => bail!("UI_BIND_ADDR is set but empty"),
+        Ok(v) => cfg.ui.bind_addr = v.trim().to_string(),
+        Err(_) => {}
+    }
+    match env::var("UI_PORT") {
+        Ok(v) if v.trim().is_empty() => bail!("UI_PORT is set but empty"),
+        Ok(v) => {
+            let port = v
+                .trim()
+                .parse::<u16>()
+                .map_err(|e| anyhow!("UI_PORT '{}' is not a valid port: {e}", v.trim()))?;
+            if port == 0 {
+                bail!("UI_PORT '{port}' is not a valid port");
+            }
+            cfg.ui.port = port;
+        }
+        Err(_) => {}
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ENV_LOCK;
     use std::io::Write;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn write_config(dir: &std::path::Path, contents: &str) -> std::path::PathBuf {
         let p = dir.join("config.toml");
@@ -156,6 +267,7 @@ password = "secret"
 
     #[test]
     fn parses_valid_config() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
@@ -171,12 +283,107 @@ password = "secret"
         assert_eq!(cfg.smtp.password, "secret");
     }
 
+    #[test]
+    fn parses_ui_section_with_defaults() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.ui.bind_addr, "127.0.0.1");
+        assert_eq!(cfg.ui.port, 8080);
+        assert!(cfg.ui.admin_token.is_empty());
+        assert!(!cfg.ui.trust_proxy_auth);
+    }
+
+    #[test]
+    fn rejects_token_and_proxy_auth_together() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("ADMIN_TOKEN");
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nadmin_token = \"tok\"\ntrust_proxy_auth = true\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn rejects_ui_port_zero() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nport = 0\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("port"));
+    }
+
+    #[test]
+    fn rejects_unparseable_bind_addr() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let contents = format!("{VALID}\n[ui]\nbind_addr = \"not-an-ip\"\n");
+        let p = write_config(dir.path(), &contents);
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("bind_addr"));
+    }
+
+    #[test]
+    fn admin_token_env_overrides_config() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        env::set_var("ADMIN_TOKEN", "from-env");
+        assert_eq!(cfg.admin_token(), "from-env");
+        env::remove_var("ADMIN_TOKEN");
+    }
+
+    #[test]
+    fn load_records_config_path() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.config_path, p.to_str().unwrap());
+    }
+
+    #[test]
+    fn state_path_override_replaces_config_value() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        cfg.apply_state_path_override(Some("./local-state.json"))
+            .unwrap();
+        assert_eq!(cfg.state_path, "./local-state.json");
+    }
+
+    #[test]
+    fn state_path_override_absent_keeps_config_value() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        cfg.apply_state_path_override(None).unwrap();
+        assert_eq!(cfg.state_path, "./state.json");
+    }
+
+    #[test]
+    fn state_path_override_rejects_empty() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let mut cfg = Config::load(p.to_str().unwrap()).unwrap();
+        let err = cfg.apply_state_path_override(Some("")).unwrap_err();
+        assert!(err.to_string().contains("must not be empty"));
+    }
+
     fn with_cron(base: &str, cron_line: &str) -> String {
         base.replace("[smtp]", &format!("{cron_line}\n[smtp]"))
     }
 
     #[test]
     fn parses_valid_config_with_cron() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"0 */6 * * *\"");
         let p = write_config(dir.path(), &contents);
@@ -187,6 +394,7 @@ password = "secret"
 
     #[test]
     fn rejects_invalid_cron_expression() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"99 99 * * *\"");
         let p = write_config(dir.path(), &contents);
@@ -196,6 +404,7 @@ password = "secret"
 
     #[test]
     fn rejects_cron_wrong_field_count() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"0 9 *\"");
         let p = write_config(dir.path(), &contents);
@@ -205,6 +414,7 @@ password = "secret"
 
     #[test]
     fn auto_prepends_seconds_for_5_fields() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"0 */6 * * *\"");
         let p = write_config(dir.path(), &contents);
@@ -214,6 +424,7 @@ password = "secret"
 
     #[test]
     fn accepts_6_field_cron() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"0 0 */6 * * *\"");
         let p = write_config(dir.path(), &contents);
@@ -223,6 +434,7 @@ password = "secret"
 
     #[test]
     fn accepts_cron_shorthand() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let contents = with_cron(VALID, "cron_expression = \"@daily\"");
         let p = write_config(dir.path(), &contents);
@@ -231,7 +443,70 @@ password = "secret"
     }
 
     #[test]
+    fn ui_bind_addr_env_override_wins_over_file() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("UI_PORT");
+        env::remove_var("UI_BIND_ADDR");
+        env::set_var("UI_BIND_ADDR", "0.0.0.0");
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        env::remove_var("UI_BIND_ADDR");
+        env::remove_var("UI_PORT");
+        assert_eq!(cfg.ui.bind_addr, "0.0.0.0");
+    }
+
+    #[test]
+    fn ui_port_env_override_wins_over_file() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("UI_BIND_ADDR");
+        env::remove_var("UI_PORT");
+        env::set_var("UI_PORT", "9090");
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        env::remove_var("UI_PORT");
+        env::remove_var("UI_BIND_ADDR");
+        assert_eq!(cfg.ui.port, 9090);
+    }
+
+    #[test]
+    fn empty_or_invalid_ui_env_override_is_a_startup_error() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("UI_BIND_ADDR");
+        env::remove_var("UI_PORT");
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let path = p.to_str().unwrap();
+
+        env::set_var("UI_BIND_ADDR", "");
+        let err = Config::load(path).unwrap_err();
+        env::remove_var("UI_BIND_ADDR");
+        env::remove_var("UI_PORT");
+        assert!(err.to_string().contains("UI_BIND_ADDR"), "{err}");
+
+        env::set_var("UI_PORT", "not-a-port");
+        let err = Config::load(path).unwrap_err();
+        env::remove_var("UI_PORT");
+        env::remove_var("UI_BIND_ADDR");
+        assert!(err.to_string().contains("UI_PORT"), "{err}");
+
+        env::set_var("UI_PORT", "");
+        let err = Config::load(path).unwrap_err();
+        env::remove_var("UI_PORT");
+        env::remove_var("UI_BIND_ADDR");
+        assert!(err.to_string().contains("UI_PORT"), "{err}");
+
+        env::set_var("UI_PORT", "0");
+        let err = Config::load(path).unwrap_err();
+        env::remove_var("UI_PORT");
+        env::remove_var("UI_BIND_ADDR");
+        assert!(err.to_string().contains("UI_PORT"), "{err}");
+    }
+
+    #[test]
     fn parses_config_without_cron() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
@@ -241,6 +516,7 @@ password = "secret"
 
     #[test]
     fn rejects_poll_interval_below_60() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("poll_interval_seconds = 3600", "poll_interval_seconds = 30");
         let p = write_config(dir.path(), &bad);
@@ -250,6 +526,7 @@ password = "secret"
 
     #[test]
     fn rejects_empty_repos() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("repos = [\"fosrl/pangolin\", \"fosrl/newt\"]", "repos = []");
         let p = write_config(dir.path(), &bad);
@@ -259,6 +536,7 @@ password = "secret"
 
     #[test]
     fn rejects_bad_repo_format() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("\"fosrl/newt\"", "\"not-a-slash\"");
         let p = write_config(dir.path(), &bad);
@@ -268,6 +546,7 @@ password = "secret"
 
     #[test]
     fn rejects_bad_sender_email() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("bot@homelab.local", "not-an-email");
         let p = write_config(dir.path(), &bad);
@@ -284,6 +563,7 @@ password = "secret"
 
     #[test]
     fn parses_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(
             dir.path(),
@@ -295,6 +575,7 @@ password = "secret"
 
     #[test]
     fn sender_name_absent_is_none() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), VALID);
         let cfg = Config::load(p.to_str().unwrap()).unwrap();
@@ -303,6 +584,7 @@ password = "secret"
 
     #[test]
     fn trims_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(
             dir.path(),
@@ -314,6 +596,7 @@ password = "secret"
 
     #[test]
     fn accepts_non_ascii_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(
             dir.path(),
@@ -325,6 +608,7 @@ password = "secret"
 
     #[test]
     fn rejects_empty_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), &with_sender_name("sender_name = \"\""));
         let err = Config::load(p.to_str().unwrap()).unwrap_err();
@@ -333,6 +617,7 @@ password = "secret"
 
     #[test]
     fn rejects_whitespace_only_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let p = write_config(dir.path(), &with_sender_name("sender_name = \"   \""));
         let err = Config::load(p.to_str().unwrap()).unwrap_err();
@@ -341,6 +626,7 @@ password = "secret"
 
     #[test]
     fn rejects_sender_name_with_control_chars() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for raw in ["bad\\nname", "bad\\rname", "bot\\n", "\\tbot"] {
             let dir = tempfile::tempdir().unwrap();
             let p = write_config(
@@ -358,6 +644,7 @@ password = "secret"
 
     #[test]
     fn accepts_sender_name_at_128_chars() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let exact = "a".repeat(128);
         let p = write_config(
@@ -370,6 +657,7 @@ password = "secret"
 
     #[test]
     fn rejects_too_long_sender_name() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let long = "a".repeat(129);
         let p = write_config(
@@ -384,6 +672,7 @@ password = "secret"
 
     #[test]
     fn rejects_bad_recipient_email() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("you@example.com", "bad");
         let p = write_config(dir.path(), &bad);
@@ -414,6 +703,17 @@ password = "secret"
     }
 
     #[test]
+    fn empty_smtp_password_env_does_not_override_file() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("SMTP_PASSWORD", "");
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        env::remove_var("SMTP_PASSWORD");
+        assert_eq!(cfg.smtp_password(), "secret");
+    }
+
+    #[test]
     fn github_token_returns_none_when_unset() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         env::remove_var("GITHUB_TOKEN");
@@ -436,6 +736,7 @@ password = "secret"
 
     #[test]
     fn parses_encryption_variants() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         for (val, expected) in [
             ("starttls", Encryption::StartTls),
@@ -451,6 +752,7 @@ password = "secret"
 
     #[test]
     fn rejects_bad_encryption_value() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("encryption = \"starttls\"", "encryption = \"foo\"");
         let p = write_config(dir.path(), &bad);
@@ -464,6 +766,7 @@ password = "secret"
 
     #[test]
     fn rejects_port_zero() {
+        let _guard = crate::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let bad = VALID.replace("port = 587", "port = 0");
         let p = write_config(dir.path(), &bad);

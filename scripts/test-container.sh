@@ -16,7 +16,8 @@ Local podman smoke test for the gh-release-notify container image.
 
   -f|--force      Remove the existing ${IMAGE_NAME} image before building
   -n|--no-cache   Build with podman build --no-cache
-  -k|--keep       Keep the test container for inspection on success
+  -k|--keep       Leave the container running for inspection on success
+                  (skips the SIGTERM check and prints the UI URL)
   -h|--help       Show this help
 EOF
 }
@@ -62,7 +63,11 @@ cleanup() {
     podman rm -f "${CONTAINER_NAME}-invalid" >/dev/null 2>&1 || true
   fi
   if [[ -n "$TMPDIR_TEST" && -d "$TMPDIR_TEST" ]]; then
-    rm -rf "$TMPDIR_TEST" || true
+    if [[ $rc -eq 0 && $KEEP = true ]]; then
+      echo "Keeping temp config/state at ${TMPDIR_TEST} (-k)."
+    else
+      rm -rf "$TMPDIR_TEST" || true
+    fi
   fi
   exit "$rc"
 }
@@ -133,9 +138,11 @@ fi
 
 echo "Starting container ${CONTAINER_NAME}..."
 podman run -d --name "${CONTAINER_NAME}" \
+  -p "127.0.0.1::8080" \
   -v "${TMPDIR_TEST}/config.toml:/config/config.toml:ro,Z" \
   -v "${TMPDIR_TEST}/state:/state:rw,Z" \
   -e RUST_LOG=info \
+  -e UI_BIND_ADDR=0.0.0.0 \
   "${IMAGE_NAME}"
 
 wait_for_log() {
@@ -187,29 +194,29 @@ else
        "The state-file check is best-effort; continuing." >&2
 fi
 
-echo "Sending SIGTERM via podman stop --time 35 ..."
-podman stop --time 35 "${CONTAINER_NAME}" >/dev/null
-
-EXIT_CODE="$(podman inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
-if [[ "$EXIT_CODE" != "0" ]]; then
-  echo "FAIL: container exit code after SIGTERM was ${EXIT_CODE}, expected 0" >&2
-  podman logs "${CONTAINER_NAME}" >&2 || true
-  exit 1
-fi
-echo "PASS: clean exit code 0"
-
-LOGS="$(podman logs "${CONTAINER_NAME}")"
-if ! grep -q "received SIGTERM" <<<"$LOGS"; then
-  echo "FAIL: logs did not contain 'received SIGTERM'" >&2
-  exit 1
-fi
-if ! grep -q "shutdown complete" <<<"$LOGS"; then
-  echo "FAIL: logs did not contain 'shutdown complete'" >&2
-  exit 1
-fi
-echo "PASS: graceful shutdown logged"
-
 if [[ $KEEP = false ]]; then
+  echo "Sending SIGTERM via podman stop --time 35 ..."
+  podman stop --time 35 "${CONTAINER_NAME}" >/dev/null
+
+  EXIT_CODE="$(podman inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
+  if [[ "$EXIT_CODE" != "0" ]]; then
+    echo "FAIL: container exit code after SIGTERM was ${EXIT_CODE}, expected 0" >&2
+    podman logs "${CONTAINER_NAME}" >&2 || true
+    exit 1
+  fi
+  echo "PASS: clean exit code 0"
+
+  LOGS="$(podman logs "${CONTAINER_NAME}")"
+  if ! grep -q "received SIGTERM" <<<"$LOGS"; then
+    echo "FAIL: logs did not contain 'received SIGTERM'" >&2
+    exit 1
+  fi
+  if ! grep -q "shutdown complete" <<<"$LOGS"; then
+    echo "FAIL: logs did not contain 'shutdown complete'" >&2
+    exit 1
+  fi
+  echo "PASS: graceful shutdown logged"
+
   podman rm "${CONTAINER_NAME}" >/dev/null
 fi
 
@@ -262,14 +269,34 @@ if ! grep -q "invalid config: poll_interval_seconds must be >= 60" <<<"$INVALID_
 fi
 echo "PASS: invalid config rejected with exit code 1 and validation error"
 
+if [[ $KEEP = true ]]; then
+  UI_PORT="$(podman port "${CONTAINER_NAME}" 8080/tcp 2>/dev/null | sed -n 's/.*:\([0-9]\+\)$/\1/p' | head -1)"
+  echo ""
+  echo "Container ${CONTAINER_NAME} left running (-k)."
+  if podman logs "${CONTAINER_NAME}" 2>/dev/null | grep -q "ui listening on"; then
+    echo "  UI:     http://127.0.0.1:${UI_PORT:-8080}"
+  fi
+  echo "  Config: ${TMPDIR_TEST}/config.toml"
+  echo "  State:  ${TMPDIR_TEST}/state/state.json"
+  echo "  Logs:   podman logs -f ${CONTAINER_NAME}"
+  echo "  Stop:   podman stop ${CONTAINER_NAME} && podman rm ${CONTAINER_NAME}"
+fi
+
 echo ""
 echo "============================================================"
 echo "PASS: all phases succeeded"
 echo "  - image ${IMAGE_NAME} built"
 echo "  - daemon booted, config loaded, scheduler polling"
 echo "  - state persisted (best-effort check: $([[ $STATE_OK = true ]] && echo ok || echo skipped/unreachable))"
-echo "  - SIGTERM -> exit code 0 with 'received SIGTERM' and 'shutdown complete'"
+if [[ $KEEP = true ]]; then
+  echo "  - container left running for inspection (SIGTERM check skipped)"
+else
+  echo "  - SIGTERM -> exit code 0 with 'received SIGTERM' and 'shutdown complete'"
+fi
 echo "  - invalid config rejected (exit 1, validation error logged)"
+if [[ $KEEP = true && -n "${UI_PORT:-}" ]]; then
+  echo "  - UI reachable at http://127.0.0.1:${UI_PORT} (if this build has the web UI)"
+fi
 if [[ $KEEP = true ]]; then
   echo "  - test container kept: run 'podman logs ${CONTAINER_NAME}' to inspect"
 fi
