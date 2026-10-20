@@ -47,4 +47,7 @@ commit_parsers = [
   { message = ".*", group = "Other" },
 ]
 protect_breaking_commits = true
-tag_pattern = "v[0-9].*"
+# Only stable vX.Y.Z tags render a changelog section. RC tags
+# (vX.Y.Z-rc.N) are excluded so they never appear in CHANGELOG.md; their
+# commits fold into the next stable release section.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"

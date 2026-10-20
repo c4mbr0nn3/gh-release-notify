@@ -80,7 +80,7 @@ check_state() {
     [[ "$(git rev-list --count "HEAD..@{upstream}" 2>/dev/null || echo 1)" -eq 0 ]] \
         || refuse "local main is behind origin/main; pull first"
     NEXT_VERSION="$(git cliff --bumped-version ${BUMP_LEVEL:+--bump "${BUMP_LEVEL}"} | tail -n 1)"
-    LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+    LAST_TAG="$(git describe --tags --exclude '*-rc.*' --abbrev=0 2>/dev/null || true)"
     [[ -n "${LAST_TAG}" ]] || refuse "no previous tag found; cannot infer release range"
     if git rev-parse -q --verify "refs/tags/${NEXT_VERSION}" >/dev/null; then
         refuse "tag ${NEXT_VERSION} already exists locally"

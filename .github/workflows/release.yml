@@ -72,6 +72,14 @@ jobs:
         run: |
           echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unrecognized release tag '${GITHUB_REF_NAME}': expected stable v<MAJOR>.<MINOR>.<PATCH> or RC v<MAJOR>.<MINOR>.<PATCH>-rc.<N>; refusing to publish."
+            exit 1
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -98,7 +106,9 @@ jobs:
           tags: |
             type=raw,value=${{ steps.version.outputs.tag }}
             type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
+            # stable: keep latest; RC: moving rc tag instead (never latest)
+            type=raw,value=latest,enable=${{ steps.version.outputs.is_rc == 'false' }}
+            type=raw,value=rc,enable=${{ steps.version.outputs.is_rc == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -175,18 +185,23 @@ jobs:
           sarif_file: trivy-image.sarif
           category: trivy-image
 
-      # 8. git-cliff, exact-pinned (MSRV 1.88 < toolchain 1.98.1)
+      # 8. git-cliff, exact-pinned (MSRV 1.88 < toolchain 1.98.1).
+      #    RC tags never create a GitHub Release, so the body generation
+      #    steps run only for stable v* tags (vX.Y.Z).
       - name: Install git-cliff
+        if: steps.version.outputs.is_rc == 'false'
         run: cargo install git-cliff --locked --version 2.14.1
 
       # 9. Render release body from cliff.toml. The tag is already on HEAD
       #    (cargo-release tagged it locally), so --unreleased resolves to an
       #    empty range; --current renders the section for the HEAD tag.
       - name: Generate changelog
+        if: steps.version.outputs.is_rc == 'false'
         run: git cliff --current --strip all > release-body.md
 
       # 10. Create GitHub Release with the git-cliff body
       - name: Create GitHub Release
+        if: steps.version.outputs.is_rc == 'false'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}

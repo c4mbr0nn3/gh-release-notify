@@ -83,9 +83,19 @@ the GitHub Release. No `workflow_dispatch` trigger exists.
 - `.github/workflows/release.yml` — triggered only by `v*` tag push:
   gate → trivy fs scan (blocking HIGH/CRITICAL) → buildx multi-arch
   (amd64 + arm64) image push to `ghcr.io/c4mbr0nn3/gh-release-notify`
-  (tags `v{ver}`/`{ver}`/`latest`, SBOM + provenance) → trivy image scan
-  `--ignore-unfixed` (blocking HIGH/CRITICAL) → SARIF uploads → installs
-  git-cliff 2.14.1 → GitHub Release with a git-cliff-generated body.
+  (stable tags `v{ver}`/`{ver}`/`latest`, RC tags `v{ver}-rc.{n}`/
+  `{ver}-rc.{n}`/`rc`, SBOM + provenance) → trivy image scan
+  `--ignore-unfixed` (blocking HIGH/CRITICAL) → SARIF uploads → for stable
+  tags only: installs git-cliff 2.14.1 → GitHub Release with a
+  git-cliff-generated body.
+- `scripts/release-rc.sh` — tag-only release candidate `vX.Y.Z-rc.N`
+  (N starts at 0). It derives the base from `git cliff --bumped-version`
+  (or `--base`), takes the next free N from local + remote tags, and
+  refuses a dirty tree, non-`main` HEAD, or an existing tag. It never
+  commits and never changes `Cargo.toml`, `Cargo.lock`, or a version file.
+  RC tags never render a `CHANGELOG.md` section (`cliff.toml`
+  `tag_pattern` is stable-only) and never create a GitHub Release; their
+  commits fold into the next stable release.
 - `scripts/test-container.sh` — local podman smoke test. Builds
   `gh-release-notify:test`, runs it with a temporary config/state mount,
   and asserts config load, polling, graceful SIGTERM shutdown, and
