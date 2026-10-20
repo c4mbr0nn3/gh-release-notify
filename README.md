@@ -15,22 +15,29 @@ embedded web UI for status and configuration.
 
 ## Quick start
 
+The multi-arch image is published to GHCR, so a deployment only needs the
+compose file plus the example config and env files:
+
 ```bash
-git clone https://github.com/c4mbr0nn3/gh-release-notify.git
+BASE=https://raw.githubusercontent.com/c4mbr0nn3/gh-release-notify/main
+mkdir -p gh-release-notify/config gh-release-notify/state
 cd gh-release-notify
-mkdir -p config state
-cp config.example.toml config/config.toml
-cp .env.example .env
+curl -fsSL "$BASE/docker-compose.yml" -o docker-compose.yml
+curl -fsSL "$BASE/config.example.toml" -o config/config.toml
+curl -fsSL "$BASE/.env.example" -o .env
 # Edit config/config.toml (repos, recipients, SMTP) and .env (ADMIN_TOKEN,
 # SMTP_PASSWORD) now, before the chown makes them container-owned.
 sudo chown -R 10001:10001 config state      # the container runs as uid 10001
-docker compose up -d
+docker compose pull && docker compose up -d
 ```
 
-Open <http://127.0.0.1:8080>. With podman, replace the last command with
-`podman compose up -d`. The first poll records each repo's current tag without
-emailing, so a fresh deployment does not notify you about releases you already
-have.
+Open <http://127.0.0.1:8080>. With podman, use the same commands with
+`podman compose` (a compose provider such as `podman-compose` is required).
+The first poll records each repo's current tag without emailing, so a fresh
+deployment does not notify you about releases you already have.
+
+To build the image from source instead, clone the repository and run the same
+steps, replacing the last line with `docker compose up -d --build`.
 
 > [!WARNING]
 > The UI can rewrite the config file, including the SMTP password. Set
