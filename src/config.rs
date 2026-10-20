@@ -9,6 +9,8 @@ pub struct Config {
     pub poll_interval_seconds: u64,
     pub state_path: String,
     pub sender: String,
+    #[serde(default)]
+    pub sender_name: Option<String>,
     pub repos: Vec<String>,
     pub recipients: Vec<String>,
     pub smtp: SmtpConfig,
@@ -75,6 +77,19 @@ impl Config {
         let email_re = regex::Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap();
         if !email_re.is_match(&self.sender) {
             bail!("sender '{}' is not a valid email", self.sender);
+        }
+        if let Some(name) = self.sender_name.take() {
+            if name.chars().any(char::is_control) {
+                bail!("sender_name must not contain control characters");
+            }
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                bail!("sender_name must not be empty");
+            }
+            if trimmed.chars().count() > 128 {
+                bail!("sender_name must be at most 128 characters");
+            }
+            self.sender_name = Some(trimmed.to_string());
         }
         for r in &self.recipients {
             if !email_re.is_match(r) {
@@ -258,6 +273,113 @@ password = "secret"
         let p = write_config(dir.path(), &bad);
         let err = Config::load(p.to_str().unwrap()).unwrap_err();
         assert!(err.to_string().contains("sender"));
+    }
+
+    fn with_sender_name(name_line: &str) -> String {
+        VALID.replace(
+            "sender = \"bot@homelab.local\"",
+            &format!("sender = \"bot@homelab.local\"\n{name_line}"),
+        )
+    }
+
+    #[test]
+    fn parses_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            &with_sender_name("sender_name = \"gh-release-notify\""),
+        );
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.sender_name.as_deref(), Some("gh-release-notify"));
+    }
+
+    #[test]
+    fn sender_name_absent_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), VALID);
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert!(cfg.sender_name.is_none());
+    }
+
+    #[test]
+    fn trims_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            &with_sender_name("sender_name = \"  gh-release-notify  \""),
+        );
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.sender_name.as_deref(), Some("gh-release-notify"));
+    }
+
+    #[test]
+    fn accepts_non_ascii_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(
+            dir.path(),
+            &with_sender_name("sender_name = \"Überwacher\""),
+        );
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.sender_name.as_deref(), Some("Überwacher"));
+    }
+
+    #[test]
+    fn rejects_empty_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), &with_sender_name("sender_name = \"\""));
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("sender_name must not be empty"));
+    }
+
+    #[test]
+    fn rejects_whitespace_only_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write_config(dir.path(), &with_sender_name("sender_name = \"   \""));
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err.to_string().contains("sender_name must not be empty"));
+    }
+
+    #[test]
+    fn rejects_sender_name_with_control_chars() {
+        for raw in ["bad\\nname", "bad\\rname", "bot\\n", "\\tbot"] {
+            let dir = tempfile::tempdir().unwrap();
+            let p = write_config(
+                dir.path(),
+                &with_sender_name(&format!("sender_name = \"{raw}\"")),
+            );
+            let err = Config::load(p.to_str().unwrap()).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("sender_name must not contain control characters"),
+                "control-char name {raw:?} was not rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_sender_name_at_128_chars() {
+        let dir = tempfile::tempdir().unwrap();
+        let exact = "a".repeat(128);
+        let p = write_config(
+            dir.path(),
+            &with_sender_name(&format!("sender_name = \"{exact}\"")),
+        );
+        let cfg = Config::load(p.to_str().unwrap()).unwrap();
+        assert_eq!(cfg.sender_name.as_deref(), Some(exact.as_str()));
+    }
+
+    #[test]
+    fn rejects_too_long_sender_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = "a".repeat(129);
+        let p = write_config(
+            dir.path(),
+            &with_sender_name(&format!("sender_name = \"{long}\"")),
+        );
+        let err = Config::load(p.to_str().unwrap()).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("sender_name must be at most 128 characters"));
     }
 
     #[test]

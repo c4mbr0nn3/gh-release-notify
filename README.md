@@ -24,6 +24,7 @@ cp config.example.toml config.toml
 poll_interval_seconds = 3600
 state_path = "/state/state.json"   # /state/state.json for Docker, ./state.json for local runs
 sender = "gh-release-notify@homelab.local"
+# sender_name = "gh-release-notify"  # optional; display name shown in email clients
 repos = ["fosrl/pangolin", "fosrl/newt"]
 recipients = ["you@example.com"]
 

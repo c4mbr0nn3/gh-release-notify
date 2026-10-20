@@ -90,6 +90,9 @@ state_path = "./state.json"
 # Email "From" address for notifications.
 sender = "gh-release-notify@homelab.local"
 
+# Optional display name shown as the sender in the email client.
+sender_name = "gh-release-notify"
+
 # Repos to watch, as "owner/repo".
 repos = ["fosrl/pangolin", "fosrl/newt"]
 
@@ -120,6 +123,7 @@ password = "smtp-password-here"
 - `repos` is non-empty; each entry matches `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`.
 - `recipients` is non-empty; each entry is a syntactically valid email (regex check, no MX lookup).
 - `sender` is a syntactically valid email.
+- `sender_name` (optional) must be non-empty after trimming, contain no control characters (checked before trimming), and be at most 128 characters.
 - `[smtp].host` is non-empty; `port` is in `1..=65535`.
 - `[smtp].encryption` is one of `starttls | tls | none`.
 - If `[smtp].username` is set, then either `[smtp].password` or `SMTP_PASSWORD` must be present.
@@ -249,4 +253,5 @@ Dev-dependencies: `tempfile` (for state round-trip tests in a temp dir).
 | Deployment artifacts           | Dockerfile + docker-compose             | Targeted at homelab deployment.                                                              |
 | Repo list                      | Configurable in TOML                    | Slightly more flexible than hardcoding; tiny extra config surface.                           |
 | GitHub auth                    | Optional token from env                 | Default unauthenticated is fine for 2 repos/hour; token path available for shared IPs.       |
-| Rust async stack               | Tokio + reqwest + lettre                | Dominant modern Rust service stack; best learning vehicle.                                   |
+| Rust async stack               | Tokio + reqwest + lettre                | Dominant modern Rust service stack; best learning vehicle.                                  |
+| Sender display name            | Optional `sender_name`                  | Friendly sender shown in mail clients; rendered `From` header unchanged when unset.          |

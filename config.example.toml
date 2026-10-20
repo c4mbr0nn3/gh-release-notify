@@ -21,6 +21,10 @@ state_path = "/state/state.json"
 # Email "From" address for notifications.
 sender = "gh-release-notify@homelab.local"
 
+# Optional display name shown as the sender in the email client.
+# When omitted, only the bare address is shown.
+# sender_name = "gh-release-notify"
+
 # Repos to watch, as "owner/repo".
 repos = ["fosrl/pangolin", "fosrl/newt"]
 

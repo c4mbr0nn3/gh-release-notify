@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Result};
 use lettre::{
-    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
-    AsyncTransport, Message, Tokio1Executor,
+    message::{header::ContentType, Mailbox},
+    transport::smtp::authentication::Credentials,
+    Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use tracing::info;
 
@@ -26,9 +27,16 @@ pub fn build_body(release: &Release, repo: &str) -> String {
     )
 }
 
+pub fn build_sender(sender: &str, name: Option<&str>) -> Result<Mailbox> {
+    let address: Address = sender
+        .parse()
+        .map_err(|e| anyhow!("invalid sender '{sender}': {e}"))?;
+    Ok(Mailbox::new(name.map(str::to_string), address))
+}
+
 pub struct Mailer {
     transport: AsyncSmtpTransport<Tokio1Executor>,
-    sender: String,
+    from: Mailbox,
 }
 
 impl Mailer {
@@ -53,7 +61,7 @@ impl Mailer {
         }
         Ok(Mailer {
             transport: builder.build(),
-            sender: cfg.sender.clone(),
+            from: build_sender(&cfg.sender, cfg.sender_name.as_deref())?,
         })
     }
 
@@ -66,11 +74,7 @@ impl Mailer {
         let body = build_body(release, repo);
         let subject = format!("[gh-release-notify] {} {} released", repo, release.tag_name);
 
-        let mut builder = Message::builder().from(
-            self.sender
-                .parse()
-                .map_err(|e| anyhow!("invalid sender '{}': {e}", self.sender))?,
-        );
+        let mut builder = Message::builder().from(self.from.clone());
         for r in recipients {
             builder = builder.to(r
                 .parse()
@@ -129,5 +133,95 @@ mod tests {
         let body = build_body(&r, "vrana/adminer");
         assert!(body.contains("Tag: 1.19.4"));
         assert!(body.contains("Name: 1.19.4"));
+    }
+
+    #[test]
+    fn sender_mailbox_includes_display_name() {
+        let m = build_sender("bot@homelab.local", Some("gh-release-notify")).unwrap();
+        assert_eq!(m.name.as_deref(), Some("gh-release-notify"));
+        assert_eq!(m.email.to_string(), "bot@homelab.local");
+    }
+
+    #[test]
+    fn sender_mailbox_without_name_has_none() {
+        let m = build_sender("bot@homelab.local", None).unwrap();
+        assert_eq!(m.name, None);
+        assert_eq!(m.email.to_string(), "bot@homelab.local");
+    }
+
+    #[test]
+    fn sender_mailbox_accepts_non_ascii_name() {
+        let m = build_sender("bot@homelab.local", Some("Überwacher")).unwrap();
+        assert_eq!(m.name.as_deref(), Some("Überwacher"));
+    }
+
+    #[test]
+    fn build_sender_rejects_regex_valid_but_lettre_invalid() {
+        let long_local = format!("{}@example.com", "a".repeat(100));
+        let err = build_sender(&long_local, None).unwrap_err();
+        assert!(err.to_string().contains("invalid sender"));
+    }
+
+    fn rendered_from_header(mailbox: Mailbox) -> String {
+        let to: Mailbox = "you@example.com".parse().unwrap();
+        let email = Message::builder()
+            .from(mailbox)
+            .to(to)
+            .subject("subject")
+            .body("body".to_string())
+            .unwrap();
+        email.headers().to_string()
+    }
+
+    #[test]
+    fn from_header_renders_display_name() {
+        let m = build_sender("bot@homelab.local", Some("gh-release-notify")).unwrap();
+        let rendered = rendered_from_header(m);
+        assert!(
+            rendered.contains("From: gh-release-notify <bot@homelab.local>"),
+            "rendered headers were: {rendered}"
+        );
+    }
+
+    #[test]
+    fn non_ascii_display_name_is_rfc2047_encoded() {
+        let m = build_sender("bot@homelab.local", Some("Überwacher")).unwrap();
+        let rendered = rendered_from_header(m);
+        assert!(
+            rendered.contains("=?utf-8?"),
+            "expected RFC 2047 encoded display name, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn from_header_unchanged_without_name() {
+        let m = build_sender("bot@homelab.local", None).unwrap();
+        let rendered = rendered_from_header(m);
+        assert!(
+            rendered.contains("From: bot@homelab.local\r\n"),
+            "unset-name From header changed: {rendered}"
+        );
+    }
+
+    #[test]
+    fn from_header_escapes_embedded_quote() {
+        let m = build_sender("bot@homelab.local", Some("Foo \" Bar")).unwrap();
+        let rendered = rendered_from_header(m);
+        assert!(
+            rendered.contains("\\\""),
+            "expected the embedded quote to be escaped, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn from_header_renders_boundary_length_name() {
+        let name = "a".repeat(128);
+        let m = build_sender("bot@homelab.local", Some(&name)).unwrap();
+        let rendered = rendered_from_header(m);
+        assert!(
+            rendered.contains(&name),
+            "128-char display name was not rendered intact"
+        );
+        assert!(rendered.contains("<bot@homelab.local>"));
     }
 }
