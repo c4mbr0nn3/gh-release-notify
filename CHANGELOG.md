@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.2.0] - 2026-10-20
+### Bug Fixes
+
+- Render release notes from HEAD tag and skip release commits
+
+- Skip unreleased section in changelog
+
+### Continuous Integration
+
+- Add tag-only release candidate workflow
+
+### Features
+
+- Add optional sender display name
+
+- Add embedded web UI with config editing and docs
+
+### Miscellaneous Tasks
+
+- Add release-note backfill script
+
+- Update cargo dependencies
+
+- Add chrome devtools MCP config
+
+### Tests
+
+- Add podman container smoke test script
+
+
 ## [1.1.5] - 2026-09-16
 ### Bug Fixes
 
