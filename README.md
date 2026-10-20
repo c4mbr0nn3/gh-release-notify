@@ -9,7 +9,7 @@ A long-running Rust daemon that watches GitHub repos for new **stable** releases
 and emails you when one appears. Ships as a Docker/podman container with an
 embedded web UI for status and configuration.
 
-![gh-release-notify status and settings page](docs/assets/ui-status.png)
+![gh-release-notify status view](docs/assets/ui-status.png)
 
 [Quick start](#quick-start) · [Configuration](docs/configuration.md) · [Web UI & auth](docs/web-ui.md) · [Operations](docs/operations.md) · [Releases](docs/releases.md) · [Contributing](CONTRIBUTING.md)
 
