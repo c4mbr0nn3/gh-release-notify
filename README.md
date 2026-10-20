@@ -112,6 +112,7 @@ See [Releases](docs/releases.md) for the full flow, image tags, and rules.
 |---|---|
 | [Configuration](docs/configuration.md) | Config keys, environment variables, cron |
 | [Web UI & auth](docs/web-ui.md) | UI sections, auth modes, reverse proxy, read-only mounts |
+| [UI guidelines](docs/UI-GUIDELINES.md) | Binding design contract for all UI work |
 | [Operations](docs/operations.md) | Logs, state, permissions, upgrade, troubleshooting |
 | [Architecture](docs/architecture.md) | Module map, data flow, runtime reload |
 | [Releases](docs/releases.md) | Stable/RC flow, workflow, image tags |
@@ -119,5 +120,4 @@ See [Releases](docs/releases.md) for the full flow, image tags, and rules.
 
 ## License
 
-[MIT](LICENSE). The embedded web UI vendors Pico CSS 2.1.1 (MIT); see
-[NOTICE](NOTICE).
+[MIT](LICENSE).

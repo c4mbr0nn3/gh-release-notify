@@ -35,7 +35,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(serve_index))
         .route("/app.js", get(serve_js))
-        .route("/pico.css", get(serve_css))
         .route("/ui.css", get(serve_ui_css))
         .route("/login", post(login))
         .route("/healthz", get(healthz))
@@ -81,14 +80,6 @@ async fn serve_js() -> Response {
     (
         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
         assets::APP_JS,
-    )
-        .into_response()
-}
-
-async fn serve_css() -> Response {
-    (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        assets::PICO_CSS,
     )
         .into_response()
 }
@@ -484,7 +475,7 @@ port = 18090
     async fn public_routes_need_no_auth() {
         let _guard = lock_env();
         let app = app("secret", false);
-        for uri in ["/", "/app.js", "/pico.css", "/ui.css", "/healthz"] {
+        for uri in ["/", "/app.js", "/ui.css", "/healthz"] {
             let resp = app.clone().oneshot(req(uri)).await.unwrap();
             assert_ne!(
                 resp.status(),
@@ -510,10 +501,35 @@ port = 18090
     async fn index_and_healthz_return_200() {
         let _guard = lock_env();
         let app = app("secret", false);
-        for uri in ["/", "/app.js", "/pico.css", "/ui.css", "/healthz"] {
+        for uri in ["/", "/app.js", "/ui.css", "/healthz"] {
             let resp = app.clone().oneshot(req(uri)).await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn index_uses_only_the_local_stylesheet() {
+        let _guard = lock_env();
+        let app = app("secret", false);
+        let resp = app.oneshot(req("/")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("/ui.css"), "local stylesheet missing: {body}");
+        assert!(
+            !body.to_ascii_lowercase().contains("pico"),
+            "framework reference remains: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_pico_route_is_gone() {
+        let _guard = lock_env();
+        let app = app("", false);
+        let resp = app.oneshot(req("/pico.css")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

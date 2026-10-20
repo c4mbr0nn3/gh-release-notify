@@ -12,8 +12,9 @@ Deploys as a Docker/podman container for homelab use.
 - Rust 2021, tokio async runtime. The dependency set and feature flags live in
   `Cargo.toml`; read it rather than trusting a copy here.
 - Errors: `anyhow` for propagation, `GithubError` for typed GitHub failures.
-- Web UI: axum 0.8, vanilla JS, vendored Pico CSS 2.1.1, embedded with
-  `include_str!`. No npm or JS build step.
+- Web UI: axum 0.8, vanilla JS, one hand-written stylesheet (`src/ui/ui.css`),
+  embedded with `include_str!`. No npm, CSS framework, or JS build step. All UI
+  work follows `docs/UI-GUIDELINES.md`.
 
 ## Layout
 
@@ -94,8 +95,13 @@ cargo test
 ## Web UI
 
 An axum 0.8 server embedded in the daemon: a single `src/ui/index.html` with
-vanilla JS (`src/ui/app.js`) and vendored Pico CSS 2.1.1, all pulled in with
-`include_str!` via `src/ui/assets.rs`. No JS build step and no npm.
+vanilla JS (`src/ui/app.js`) and one hand-written stylesheet (`src/ui/ui.css`),
+all pulled in with `include_str!` via `src/ui/assets.rs`. No JS build step, no
+npm, and no CSS framework.
+
+**Design contract:** read `docs/UI-GUIDELINES.md` before changing anything under
+`src/ui/`; every UI change must follow it. If a rule must change, update the
+guideline in the same change.
 
 Invariants:
 
@@ -181,7 +187,8 @@ Invariants:
   `docs/superpowers/plans/2026-10-11-sender-display-name.md`.
 - Web UI: `docs/SPEC-web-ui.md`, `docs/SPEC-config-writeback.md`,
   `docs/plan-web-ui.md`, capability map `docs/capability-map.md`; design and
-  hardening plans under `docs/superpowers/plans/2026-10-20-web-ui-*.md`.
+  hardening plans under `docs/superpowers/plans/2026-10-20-web-ui-*.md`; binding
+  visual contract `docs/UI-GUIDELINES.md`.
 - Release workflow:
   `docs/superpowers/specs/2026-07-05-release-workflow-design.md` and its
   superseded plan; local flow

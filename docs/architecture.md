@@ -34,8 +34,7 @@ src/
   ui/assets.rs         include_str! constants for the embedded page
   ui/index.html        embedded UI page
   ui/app.js            embedded client logic
-  ui/ui.css            embedded UI styles
-  ui/pico.classless.min.css  vendored Pico CSS 2.1.1 (MIT)
+  ui/ui.css            embedded UI styles (no CSS framework)
 config.example.toml    sample config
 .env.example           sample environment file for Compose
 Dockerfile             multi-stage build: rust:1.98.1-slim-trixie → debian:trixie-slim

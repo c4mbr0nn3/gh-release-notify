@@ -1,5 +1,10 @@
 # Web UI Implementation Plan
 
+> **Historical note:** this plan created the first UI with vendored Pico CSS.
+> The styling and frontend structure have since been replaced. For current UI
+> work, follow [`UI-GUIDELINES.md`](UI-GUIDELINES.md); the backend, auth, and
+> config-writeback steps below remain the reference for those areas.
+
 **Date:** 2026-09-14
 **Specs:** `docs/SPEC-config-writeback.md`, `docs/SPEC-web-ui.md`
 **Capability map:** `docs/capability-map.md`

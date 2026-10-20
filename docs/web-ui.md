@@ -1,8 +1,9 @@
 # Web UI & auth
 
 The daemon serves an embedded axum UI: one HTML page, vanilla JavaScript, and
-vendored Pico CSS 2.1.1, all compiled into the binary with `include_str!`. There
-is no npm, no JavaScript build step, and no separate frontend artifact.
+one hand-written stylesheet, all compiled into the binary with `include_str!`.
+There is no npm, no CSS framework, no JavaScript build step, and no separate
+frontend artifact. All UI work follows [UI guidelines](UI-GUIDELINES.md).
 
 The UI listens on `[ui].bind_addr`:`[ui].port`, default `127.0.0.1:8080`.
 `UI_BIND_ADDR` and `UI_PORT` override both at startup and are never written back
@@ -10,14 +11,19 @@ to the config file.
 
 ## Page sections
 
-- **Status** — repository table (last-seen tag and state) plus last and next poll
-  times.
-- **Settings** — polling, email recipients, repositories, SMTP, and admin access.
-- **Read-only values** — state path, effective bind address, and effective port.
+- **Status** — a tick line with last/next poll times, then the repository table
+  (last-seen tag and state). States are *Watching* or *No release yet*; the
+  snapshot has no per-repository error state.
+- **Settings** — polling, repositories, email recipients, SMTP, and admin access.
+- **Read-only values** — state path, effective bind address and port, auth mode,
+  and environment-managed token flags.
+- **Sign in** — one admin-token field, shown only in token mode when there is no
+  valid session.
 
-The settings form uses a sticky save bar: it shows an *Unsaved changes* marker as
-soon as a field changes, turns green on success and red on failure, and keeps
-your edits after a session expiry so you can sign in again and retry.
+The settings form uses an explicit save model: the save bar tracks
+*All changes saved*, *Unsaved changes*, *Saving…*, *Saved HH:MM*, validation
+errors, and save errors. It keeps your edits after a session expiry so you can
+sign in again and retry. There is no autosave.
 
 ## Reload behavior
 
@@ -97,7 +103,8 @@ file and its migration notes assume a directory mount.
 - The UI can rewrite the file that holds the SMTP password. In a read-write
   deployment, an admin token or proxy auth is effectively mandatory.
 - No secret value is returned by any endpoint or written to the logs. Responses
-  report presence flags only (`admin_token_set`, `env_managed`).
+  report presence flags only (`admin_token_set`, `env_managed`). The UI does not
+  know whether an SMTP password exists in the config file.
 - Binding to `0.0.0.0` with no token logs a warning at startup.
 - Every non-GET request, including `POST /login`, `PUT /api/config`, and
   `POST /api/logout`, requires `X-Requested-With: gh-release-notify`. Combined

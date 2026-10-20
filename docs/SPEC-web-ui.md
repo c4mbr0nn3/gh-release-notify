@@ -1,5 +1,10 @@
 # WEB-UI — Design Spec
 
+> **Historical note:** the UI styling and component contract in this spec were
+> replaced by the custom Paper Instrument UI. Pico CSS is no longer used. For
+> current UI work, follow [`UI-GUIDELINES.md`](UI-GUIDELINES.md). The auth,
+> endpoint, and config-writeback decisions below remain authoritative.
+
 **Date:** 2026-09-14
 **Status:** Approved
 **Module id:** `web-ui`

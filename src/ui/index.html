@@ -4,164 +4,301 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#FBFAF9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex">
+  <meta name="description" content="Status and configuration for gh-release-notify, a GitHub release notification daemon.">
+  <link rel="icon" href="data:,">
   <title>gh-release-notify</title>
-  <link rel="stylesheet" href="/pico.css">
   <link rel="stylesheet" href="/ui.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <main class="ui-main">
 
-    <header class="ui-shell-header">
-      <div>
-        <h1>gh-release-notify</h1>
-        <p class="ui-tagline">GitHub release watch daemon &mdash; email notifications on new stable releases.</p>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="app-header">
+    <span class="brand">gh-release-notify</span>
+    <nav id="main-nav" class="view-nav" aria-label="Primary" hidden>
+      <a href="#status" data-nav="status">Status</a>
+      <a href="#settings" data-nav="settings">Settings</a>
+      <a href="#readonly" data-nav="readonly">Read-only</a>
+    </nav>
+    <button id="logout-btn" type="button" class="btn ghost header-logout" hidden>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      <span class="logout-label">Log out</span>
+    </button>
+  </header>
+
+  <div id="banner-slot" class="banner-slot"></div>
+
+  <main id="main" tabindex="-1">
+
+    <section id="view-status" class="view" hidden aria-labelledby="status-heading">
+      <h1 id="status-heading" tabindex="-1">Status</h1>
+
+      <div id="tick-line" class="tick-line tick-empty">
+        <span class="tick-label">last&nbsp;<time id="tick-last" datetime="">never</time></span>
+        <div id="tick-rule" class="tick-rule" aria-hidden="true">
+          <span class="tick-elapsed"></span>
+          <span class="tick-remaining"></span>
+          <span class="tick-marker"></span>
+        </div>
+        <span class="tick-label">next&nbsp;<time id="tick-next" datetime="">&mdash;</time></span>
       </div>
-      <nav id="section-nav" class="ui-nav" aria-label="Sections" hidden>
-        <a href="#status">Status</a>
-        <a href="#settings">Settings</a>
-        <a href="#readonly">Read-only</a>
-        <button id="logout-btn" type="button" hidden>Logout</button>
-      </nav>
-    </header>
 
-    <section id="login-section" class="ui-login" hidden aria-labelledby="login-heading">
-      <h2 id="login-heading">Sign in</h2>
-      <form id="login-form">
-        <label for="login-token">Admin token</label>
-        <input type="password" id="login-token" name="admin_token"
-               autocomplete="current-password" placeholder="Admin token"
-               aria-describedby="login-hint login-error" required>
-        <small id="login-hint" class="ui-hint">The admin token from config.toml or the ADMIN_TOKEN environment variable.</small>
-        <button type="submit">Sign in</button>
-        <output id="login-error" for="login-token" aria-live="polite"></output>
-      </form>
-    </section>
-
-    <section id="status" hidden aria-labelledby="dashboard-heading">
-      <h2 id="dashboard-heading">Status</h2>
-      <table class="ui-status">
+      <table id="status-table" class="status-table">
+        <caption class="sr-only">Repositories and their last seen release.</caption>
         <thead>
-          <tr><th scope="col">Repository</th><th scope="col">Last seen release</th><th scope="col">State</th></tr>
+          <tr>
+            <th scope="col">Repository</th>
+            <th scope="col">Last seen release</th>
+            <th scope="col">State</th>
+          </tr>
         </thead>
-        <tbody id="status-repos-body"></tbody>
+        <tbody id="status-body"></tbody>
       </table>
-      <p class="ui-poll-line">
-        <span>Last poll <time id="status-last-poll">never</time></span>
-        <span>Next poll <time id="status-next-poll">unknown</time></span>
-      </p>
+
+      <ul id="status-list" class="status-list"></ul>
+
+      <div id="status-empty" class="empty-state" hidden>
+        <p>No repositories yet.</p>
+        <button id="empty-add-repo" type="button" class="btn secondary">Add repository</button>
+      </div>
     </section>
 
-    <section id="settings" hidden aria-labelledby="settings-heading">
-      <h2 id="settings-heading">Settings</h2>
+    <section id="view-settings" class="view" hidden aria-labelledby="settings-heading">
+      <h1 id="settings-heading" tabindex="-1">Settings</h1>
 
-      <p id="readonly-banner" role="alert" hidden>
-        The configuration file is not writable. Saving is disabled.
-      </p>
+      <form id="settings-form" novalidate>
+        <div id="error-summary" class="error-summary" tabindex="-1" hidden>
+          <p id="error-summary-title" class="error-summary-title"></p>
+          <ol id="error-summary-list"></ol>
+        </div>
 
-      <form id="settings-form">
-        <fieldset class="ui-group">
+        <fieldset class="group">
           <legend>Polling</legend>
-
-          <label for="poll-interval">Poll interval (seconds)</label>
-          <input type="number" id="poll-interval" name="poll_interval_seconds" min="60" step="1">
-
-          <label for="cron-expression">Cron expression</label>
-          <input type="text" id="cron-expression" name="cron_expression"
-                 placeholder="0 */6 * * *" aria-describedby="cron-hint">
-          <small id="cron-hint" class="ui-hint">Optional. A 5-field UTC cron expression (day of week: 1=Sunday&ndash;7=Saturday).
-            When set, it overrides the poll interval.</small>
+          <div class="group-content">
+            <div class="field-grid">
+              <div class="field field-narrow">
+                <label for="poll-interval">Poll interval (seconds)</label>
+                <input type="number" id="poll-interval" name="poll_interval_seconds"
+                       min="60" step="1" inputmode="numeric"
+                       aria-describedby="poll-interval-hint poll-interval-error">
+                <p class="hint" id="poll-interval-hint">How often each repository is checked when no cron expression is set.</p>
+                <p class="field-error" id="poll-interval-error" hidden></p>
+              </div>
+              <div class="field field-span">
+                <label for="cron-expression">Cron expression</label>
+                <input type="text" id="cron-expression" name="cron_expression"
+                       placeholder="0 */6 * * *" autocapitalize="none" spellcheck="false"
+                       aria-describedby="cron-hint">
+                <p class="hint" id="cron-hint">Optional. A 5-field UTC cron expression that overrides the poll interval. Day of week: 1=Sunday to 7=Saturday. Checked by the server on save.</p>
+              </div>
+            </div>
+          </div>
         </fieldset>
 
-        <fieldset class="ui-group">
-          <legend>Email</legend>
-
-          <label for="sender">Sender address</label>
-          <input type="email" id="sender" name="sender" placeholder="bot@homelab.local">
-
-          <label for="sender-name">Sender name</label>
-          <input type="text" id="sender-name" name="sender_name" placeholder="Release Bot"
-                 aria-describedby="sender-name-hint">
-          <small id="sender-name-hint" class="ui-hint">Optional. Display name shown in the recipient's email client.</small>
-
-          <label>Recipients</label>
-          <div id="recipients-list"></div>
-          <p><button type="button" id="add-recipient">Add recipient</button></p>
-        </fieldset>
-
-        <fieldset class="ui-group">
+        <fieldset class="group">
           <legend>Repositories</legend>
-
-          <div id="repos-list"></div>
-          <p><button type="button" id="add-repo">Add repository</button></p>
+          <div class="group-content">
+            <div class="field">
+              <span class="field-label" id="repos-label">Repositories to watch</span>
+              <div id="repos-list" class="row-list" role="list" aria-labelledby="repos-label"></div>
+              <p class="field-error" id="repos-error" hidden></p>
+              <button type="button" id="add-repo" class="btn add-row">Add repository</button>
+            </div>
+          </div>
         </fieldset>
 
-        <fieldset class="ui-group">
+        <fieldset class="group">
+          <legend>Email</legend>
+          <div class="group-content">
+            <div class="field-grid">
+              <div class="field">
+                <label for="sender">Sender address</label>
+                <input type="email" id="sender" name="sender" placeholder="bot@homelab.local"
+                       autocomplete="off" spellcheck="false"
+                       aria-describedby="sender-error">
+                <p class="field-error" id="sender-error" hidden></p>
+              </div>
+              <div class="field">
+                <label for="sender-name">Sender name</label>
+                <input type="text" id="sender-name" name="sender_name" placeholder="Release Bot"
+                       autocomplete="off">
+                <p class="hint">Optional display name shown in the recipient's email client.</p>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-label" id="recipients-label">Recipients</span>
+              <div id="recipients-list" class="row-list" role="list" aria-labelledby="recipients-label"></div>
+              <p class="field-error" id="recipients-error" hidden></p>
+              <button type="button" id="add-recipient" class="btn add-row">Add recipient</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
           <legend>SMTP</legend>
-
-          <label for="smtp-host">Host</label>
-          <input type="text" id="smtp-host" name="smtp_host" placeholder="smtp.example.com">
-
-          <label for="smtp-port">Port</label>
-          <input type="number" id="smtp-port" name="smtp_port" min="1" max="65535" step="1">
-
-          <label for="smtp-encryption">Encryption</label>
-          <select id="smtp-encryption" name="smtp_encryption" aria-describedby="smtp-encryption-hint">
-            <option value="starttls">STARTTLS</option>
-            <option value="tls">TLS (implicit)</option>
-            <option value="none">None (plain)</option>
-          </select>
-          <small id="smtp-encryption-hint" class="ui-hint">STARTTLS upgrades a plain connection; implicit TLS is usually port 465; none is plain text, usually port 25.</small>
-
-          <label for="smtp-username">Username</label>
-          <input type="text" id="smtp-username" name="smtp_username" placeholder="postmaster">
-
-          <label for="smtp-password">Password</label>
-          <input type="password" id="smtp-password" name="smtp_password"
-                 autocomplete="new-password" placeholder="unchanged"
-                 aria-describedby="smtp-password-note">
-          <small id="smtp-password-note" class="ui-hint">Leave empty to keep the existing password.</small>
+          <div class="group-content">
+            <div class="field-grid">
+              <div class="field field-span">
+                <label for="smtp-host">Host</label>
+                <input type="text" id="smtp-host" name="smtp_host" placeholder="smtp.example.com"
+                       autocomplete="off" spellcheck="false"
+                       aria-describedby="smtp-host-error">
+                <p class="field-error" id="smtp-host-error" hidden></p>
+              </div>
+              <div class="field field-narrow">
+                <label for="smtp-port">Port</label>
+                <input type="number" id="smtp-port" name="smtp_port"
+                       min="1" max="65535" step="1" inputmode="numeric"
+                       aria-describedby="smtp-port-error">
+                <p class="field-error" id="smtp-port-error" hidden></p>
+              </div>
+              <div class="field">
+                <label for="smtp-encryption">Encryption</label>
+                <select id="smtp-encryption" name="smtp_encryption" aria-describedby="smtp-encryption-hint">
+                  <option value="starttls">STARTTLS</option>
+                  <option value="tls">TLS (implicit)</option>
+                  <option value="none">None (plain)</option>
+                </select>
+                <p class="hint" id="smtp-encryption-hint">STARTTLS upgrades a plain connection; implicit TLS is usually port 465; none is plain text, usually port 25.</p>
+              </div>
+              <div class="field">
+                <label for="smtp-username">Username</label>
+                <input type="text" id="smtp-username" name="smtp_username" placeholder="postmaster"
+                       autocomplete="off">
+                <p class="hint">Leave empty when the server needs no authentication.</p>
+              </div>
+              <div class="field field-span">
+                <label for="smtp-password">Password</label>
+                <input type="password" id="smtp-password" name="smtp_password"
+                       autocomplete="new-password" aria-describedby="smtp-password-hint">
+                <p class="hint" id="smtp-password-hint">Leave empty to keep the existing password. Clearing is not supported.</p>
+              </div>
+            </div>
+          </div>
         </fieldset>
 
-        <fieldset class="ui-group">
+        <fieldset class="group">
           <legend>Admin access</legend>
-          <label for="admin-token">New admin token</label>
-          <input type="password" id="admin-token" name="admin_token"
-                 autocomplete="new-password" placeholder="unchanged"
-                 aria-describedby="admin-token-note">
-          <small id="admin-token-note" class="ui-hint">Leave empty to keep the current token.</small>
-          <label for="admin-token-clear">
-            <input type="checkbox" id="admin-token-clear" role="switch">
-            Disable authentication (open mode)
-          </label>
-          <small id="github-token-note" class="ui-hint" hidden>
-            A GitHub token is provided through the environment (GITHUB_TOKEN).
-          </small>
+          <div class="group-content">
+            <div class="field">
+              <div class="label-row">
+                <label for="admin-token">New admin token</label>
+                <span id="admin-token-state" class="pill pill-neutral">Not set</span>
+              </div>
+              <div class="password-row">
+                <input type="password" id="admin-token" autocomplete="new-password"
+                       aria-describedby="admin-token-hint">
+                <button type="button" id="admin-token-show" class="btn ghost small" aria-pressed="false">Show</button>
+              </div>
+              <p class="hint" id="admin-token-hint">Leave empty to keep the current token.</p>
+            </div>
+            <div class="field">
+              <div class="switch-row">
+                <input type="checkbox" id="admin-disable-auth" class="switch">
+                <label for="admin-disable-auth">Disable authentication (open mode)</label>
+                <span id="admin-disable-state" class="switch-state">Disabled</span>
+              </div>
+              <p class="hint">Anyone who can reach this port could read status and edit the configuration.</p>
+              <p class="hint">An <code>ADMIN_TOKEN</code> environment value overrides the file and cannot be detected by the UI; authentication stays on while it is set.</p>
+            </div>
+          </div>
         </fieldset>
 
-        <div class="ui-save-bar">
-          <span id="unsaved" class="ui-unsaved" hidden>Unsaved changes</span>
-          <output id="settings-message" aria-live="polite"></output>
-          <button type="submit" id="save-btn">Save</button>
+        <div class="save-bar" id="save-bar">
+          <div class="save-status">
+            <span id="save-glyph" class="save-glyph" aria-hidden="true"></span>
+            <p id="save-status" role="status"><span id="save-status-text"></span></p>
+            <button type="button" id="save-review" class="btn ghost small" hidden>Review</button>
+            <button type="button" id="save-retry" class="btn ghost small" hidden>Try again</button>
+          </div>
+          <button type="submit" id="save-btn" class="btn secondary">Save changes</button>
         </div>
       </form>
     </section>
 
-    <section id="readonly" hidden aria-labelledby="readonly-heading">
-      <h2 id="readonly-heading">Read-only values</h2>
-      <dl class="ui-readonly">
-        <dt>State file path</dt><dd><code id="readonly-state-path">unknown</code></dd>
-        <dt>UI bind address</dt><dd><code id="readonly-bind-addr">unknown</code></dd>
-        <dt>UI port</dt><dd><code id="readonly-ui-port">unknown</code></dd>
+    <section id="view-readonly" class="view" hidden aria-labelledby="readonly-heading">
+      <h1 id="readonly-heading" tabindex="-1">Read-only</h1>
+
+      <dl class="ro-grid">
+        <div class="ro-row">
+          <dt>State file path</dt>
+          <dd><code id="readonly-state-path">&mdash;</code></dd>
+        </div>
+        <div class="ro-row">
+          <dt>UI bind address</dt>
+          <dd><code id="readonly-bind-addr">&mdash;</code></dd>
+        </div>
+        <div class="ro-row">
+          <dt>UI port</dt>
+          <dd><code id="readonly-ui-port">&mdash;</code></dd>
+        </div>
+        <div class="ro-row">
+          <dt>Auth mode</dt>
+          <dd><code id="readonly-auth-mode">&mdash;</code></dd>
+        </div>
+        <div class="ro-row">
+          <dt>GitHub token</dt>
+          <dd><code id="readonly-github-token">not set</code></dd>
+        </div>
+        <div class="ro-row" id="readonly-smtp-row" hidden>
+          <dt>SMTP password</dt>
+          <dd><code>from SMTP_PASSWORD</code></dd>
+        </div>
       </dl>
-      <p class="ui-hint">These come from the config file and environment; changing them requires a restart.</p>
+
+      <p class="hint ro-note">These values come from the config file and environment. Changing them requires a restart.</p>
     </section>
 
-    <footer>
-      <small>gh-release-notify &mdash; <a href="/healthz">health endpoint</a></small>
-    </footer>
+    <section id="view-login" class="view view-login" hidden aria-labelledby="login-heading">
+      <h1 id="login-heading" tabindex="-1">Sign in</h1>
+      <form id="login-form" novalidate>
+        <input type="text" name="username" value="admin" autocomplete="username"
+               class="sr-only" tabindex="-1" aria-hidden="true" readonly>
+        <div class="field">
+          <label for="login-token">Admin token</label>
+          <div class="password-row">
+            <input type="password" id="login-token"
+                   autocomplete="current-password" autocapitalize="none" spellcheck="false"
+                   aria-describedby="login-hint login-error">
+            <button type="button" id="login-show" class="btn ghost small" aria-pressed="false">Show</button>
+          </div>
+          <p class="hint" id="login-hint">Enter the admin token from the configuration file.</p>
+        </div>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button type="submit" id="login-submit" class="btn primary">Sign in</button>
+      </form>
+    </section>
+
+    <p class="footer-note">Health endpoint: <a href="/healthz">/healthz</a></p>
 
   </main>
+
+  <nav id="bottom-nav" class="bottom-nav" aria-label="Views" hidden>
+    <a href="#status" data-nav="status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span>Status</span>
+    </a>
+    <a href="#settings" data-nav="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      <span>Settings</span>
+    </a>
+    <a href="#readonly" data-nav="readonly">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>Read-only</span>
+    </a>
+  </nav>
+
+  <dialog id="logout-dialog" aria-labelledby="logout-question">
+    <p id="logout-question">You have unsaved changes. Log out and discard them?</p>
+    <div class="dialog-actions">
+      <button type="button" id="logout-stay" class="btn secondary">Stay</button>
+      <button type="button" id="logout-confirm" class="btn danger">Log out</button>
+    </div>
+  </dialog>
+
 </body>
 </html>

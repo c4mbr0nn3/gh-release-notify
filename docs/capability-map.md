@@ -40,7 +40,7 @@ These are settled once and referenced by both specs.
 |---|---|
 | HTTP framework | `axum` 0.8.9 (tokio-native; the only genuinely new package group) |
 | Frontend | Single self-contained HTML file, vanilla JS, no build step, embedded with `include_str!` |
-| CSS | Pico CSS 2.1.1 `pico.classless.min.css`, vendored, MIT header retained |
+| CSS | One hand-written stylesheet (`src/ui/ui.css`); no framework, no build step. Design contract: `docs/UI-GUIDELINES.md` |
 | Constant-time compare | `subtle` (`ct_eq`) — 2.6.1 already in `Cargo.lock` via `reqwest`: +0 packages |
 | Session entropy | `getrandom::fill` — 0.4.3 already in `Cargo.lock` via `tempfile`: +0 packages. No `rand` |
 | Config editing crate | `toml_edit` (preserves comments and key order) |

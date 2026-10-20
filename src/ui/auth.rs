@@ -11,7 +11,7 @@ use tracing::{debug, warn};
 
 use super::AppState;
 
-pub const PUBLIC_ROUTES: &[&str] = &["/", "/app.js", "/pico.css", "/ui.css", "/login", "/healthz"];
+pub const PUBLIC_ROUTES: &[&str] = &["/", "/app.js", "/ui.css", "/login", "/healthz"];
 pub const CSRF_HEADER: &str = "x-requested-with";
 pub const CSRF_VALUE: &str = "gh-release-notify";
 pub const SESSION_TTL_HOURS: i64 = 12;
