@@ -86,6 +86,12 @@ the GitHub Release. No `workflow_dispatch` trigger exists.
   (tags `v{ver}`/`{ver}`/`latest`, SBOM + provenance) → trivy image scan
   `--ignore-unfixed` (blocking HIGH/CRITICAL) → SARIF uploads → installs
   git-cliff 2.14.1 → GitHub Release with a git-cliff-generated body.
+- `scripts/test-container.sh` — local podman smoke test. Builds
+  `gh-release-notify:test`, runs it with a temporary config/state mount,
+  and asserts config load, polling, graceful SIGTERM shutdown, and
+  invalid-config rejection. State persistence is best-effort (passes when
+  GitHub is unreachable). Flags: `-f|--force`, `-n|--no-cache`,
+  `-k|--keep`, `-h`.
 
 - **Lockstep toolchain-pin rule**: CI toolchain pin (1.98.1) and Dockerfile
   builder pin (`rust:1.98.1-slim-trixie`) are bumped together in one commit,
@@ -98,7 +104,8 @@ the GitHub Release. No `workflow_dispatch` trigger exists.
 
 The script runs the full gate (`cargo fmt`, `cargo clippy -- -D warnings`,
 `cargo test`) locally before executing cargo-release, and `release.yml`
-runs the same gate again on tag push before building the image.
+runs the same gate again on tag push before building the image. For
+container changes also run `./scripts/test-container.sh`.
 
 ### Release config
 

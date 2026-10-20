@@ -79,6 +79,19 @@ docker build -t gh-release-notify:latest .
 podman build -t gh-release-notify:latest .
 ```
 
+To smoke-test the image locally without touching your real config or state:
+
+```bash
+./scripts/test-container.sh
+```
+
+The script builds `gh-release-notify:test` with podman, runs it against a
+temporary config and state directory, and asserts that the daemon loads its
+config, polls, shuts down cleanly on SIGTERM, and rejects an invalid config.
+Flags: `-f|--force` (rebuild from scratch), `-n|--no-cache`, `-k|--keep`
+(keep the container for inspection), `-h|--help`. State persistence is
+checked best-effort, so the script still passes when GitHub is unreachable.
+
 Run with `docker-compose.yml` (mounts `config.toml` read-only and a `./state` directory for persistence). Use whichever compose implementation you have available:
 
 ```bash
